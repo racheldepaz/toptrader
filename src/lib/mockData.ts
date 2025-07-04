@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Trade, User } from './types';
 
 export const mockTrades: Trade[] = [
