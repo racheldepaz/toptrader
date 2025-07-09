@@ -43,13 +43,13 @@ export default function Header() {
               <div className="hidden md:flex items-center space-x-2">
                 <button
                   onClick={openLoginModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-600 bg-transparent rounded-md hover:bg-gray-100 transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-gray-600 bg-blue-100 rounded-md hover:bg-gray-100 transition-colors"
                 >
                   Log In
                 </button>
                 <button
                   onClick={openSignupModal}
-                  className="px-4 py-2 text-sm font-medium text-white bg-600 rounded-md hover:bg-blue-700 transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-700 rounded-md hover:bg-blue-500 transition-colors"
                 >
                   Sign Up
                 </button>
