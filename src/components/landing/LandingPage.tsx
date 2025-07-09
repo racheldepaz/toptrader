@@ -16,7 +16,7 @@ interface LandingPageProps {
   children?: ReactNode;
 }
 
-export default function LandingPage({ children }: LandingPageProps) {
+export default function LandingPage({ children: _children }: LandingPageProps) {
   const { 
     isLoginModalOpen, 
     closeLoginModal, 

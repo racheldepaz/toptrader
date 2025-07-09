@@ -3,23 +3,25 @@
 import { useState } from 'react';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
 
-interface EnhancedLoginModalProps {
+interface EnhancedSignupModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginModalProps) {
+export default function EnhancedSignupModal({ isOpen, onClose }: EnhancedSignupModalProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [useFallback, setUseFallback] = useState(false);
   
-  const { login } = useSupabaseAuth();
+  const { signup } = useSupabaseAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!email || !password || (!useFallback && !username)) return;
 
     setLoading(true);
     setError('');
@@ -32,16 +34,16 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
     }
 
     try {
-      const { error: loginError } = await login(email, password);
+      const { error: signupError } = await signup(email, password, username, displayName);
       
-      if (loginError) {
-        setError(loginError.message);
+      if (signupError) {
+        setError(signupError.message);
       } else {
         onClose();
-        // The auth state change will trigger a re-render
+        // Show success message or redirect
+        alert('Account created successfully! Please check your email to verify your account.');
       }
     } catch (err) {
-      console.error('Login error:', err);
       setError('An unexpected error occurred');
     }
 
@@ -54,7 +56,7 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">Welcome Back</h2>
+          <h2 className="text-2xl font-bold">Join TopTrader</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
         </div>
 
@@ -73,6 +75,29 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
             placeholder={useFallback ? "Enter any email (demo)" : "Email address"}
             required
           />
+          
+          {!useFallback && (
+            <>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Username (e.g., moonwalker)"
+                required
+                maxLength={50}
+              />
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Display name (optional)"
+                maxLength={100}
+              />
+            </>
+          )}
+          
           <input
             type="password"
             value={password}
@@ -85,12 +110,12 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
           <div className="flex items-center">
             <input
               type="checkbox"
-              id="useFallback"
+              id="useFallbackSignup"
               checked={useFallback}
               onChange={(e) => setUseFallback(e.target.checked)}
               className="mr-2"
             />
-            <label htmlFor="useFallback" className="text-sm text-gray-600">
+            <label htmlFor="useFallbackSignup" className="text-sm text-gray-600">
               Use demo mode (no Supabase required)
             </label>
           </div>
@@ -100,18 +125,18 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
             disabled={loading}
             className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? 'Creating account...' : 'Create Account'}
           </button>
         </form>
 
         {!useFallback && (
           <div className="mt-4 text-sm text-gray-600 text-center">
-            <p>Don&apos;t have an account? 
+            <p>Already have an account? 
               <button 
-                onClick={() => {/* Switch to signup modal */}} 
+                onClick={() => {/* Switch to login modal */}} 
                 className="text-blue-600 hover:text-blue-700 ml-1"
               >
-                Sign up
+                Sign in
               </button>
             </p>
           </div>

@@ -10,7 +10,7 @@ const testimonials = [
   },
   {
     id: 2,
-    quote: "I love being able to share my trades without revealing my portfolio size. It's all about the percentage gains!",
+    quote: "I love being able to share my trades without revealing my portfolio size. It&apos;s all about the percentage gains!",
     author: 'Jamie R.',
     role: 'Swing Trader',
     rating: 5,
@@ -65,7 +65,7 @@ export default function SocialProofSection() {
               <div key={testimonial.id} className="bg-gray-50 p-6 rounded-lg">
                 <Rating rating={testimonial.rating} />
                 <blockquote className="mt-4">
-                  <p className="text-lg text-gray-700">"{testimonial.quote}"</p>
+                  <p className="text-lg text-gray-700">&ldquo;{testimonial.quote}&rdquo;</p>
                 </blockquote>
                 <div className="mt-4">
                   <p className="font-medium text-gray-900">{testimonial.author}</p>

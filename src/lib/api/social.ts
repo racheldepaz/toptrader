@@ -1,6 +1,6 @@
 // src/lib/api/social.ts
 import { supabase } from '../supabase'
-import { TradeWithSocialStats, TradeComment, convertDbTradeToUITrade } from '../types'
+import { TradeWithSocialStats, TradeComment } from '../types'
 
 // LIKES FUNCTIONALITY
 export const toggleTradeLike = async (tradeId: string): Promise<{ success: boolean; liked: boolean; error?: string }> => {
@@ -49,7 +49,7 @@ export const toggleTradeLike = async (tradeId: string): Promise<{ success: boole
 
       return { success: true, liked: true }
     }
-  } catch (error) {
+  } catch (_error) {
     return { success: false, liked: false, error: 'Unexpected error occurred' }
   }
 }
@@ -106,7 +106,7 @@ export const getTradeComments = async (tradeId: string): Promise<{ success: bool
     })
 
     return { success: true, comments: formattedComments }
-  } catch (error) {
+  } catch (_error) {
     return { success: false, comments: [], error: 'Unexpected error occurred' }
   }
 }
@@ -159,7 +159,7 @@ export const addTradeComment = async (tradeId: string, content: string): Promise
     }
 
     return { success: true, comment: formattedComment }
-  } catch (error) {
+  } catch (_error) {
     return { success: false, error: 'Unexpected error occurred' }
   }
 }
@@ -196,7 +196,7 @@ export const deleteTradeComment = async (commentId: string): Promise<{ success: 
     }
 
     return { success: true }
-  } catch (error) {
+  } catch (_error) {
     return { success: false, error: 'Unexpected error occurred' }
   }
 }
@@ -284,7 +284,7 @@ export const getTradesWithSocialStats = async (): Promise<{ success: boolean; tr
     }
 
     return { success: true, trades: tradesWithStats }
-  } catch (error) {
+  } catch (_error) {
     return { success: false, trades: [], error: 'Unexpected error occurred' }
   }
 }

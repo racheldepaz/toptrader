@@ -1,4 +1,4 @@
-import { CheckCircleIcon, ChartBarIcon, ShieldCheckIcon, LinkIcon } from '@heroicons/react/24/outline';
+import { ChartBarIcon, ShieldCheckIcon, LinkIcon } from '@heroicons/react/24/outline';
 
 const features = [
   {

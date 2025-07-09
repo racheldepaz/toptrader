@@ -4,8 +4,8 @@ import { TradeComment } from '../types';
 import { mockComments } from '../mockData';
 
 // In-memory storage for mock mode
-let mockLikes: { [tradeId: string]: Set<string> } = {};
-let mockCommentsStorage: { [tradeId: string]: TradeComment[] } = { ...mockComments };
+const mockLikes: { [tradeId: string]: Set<string> } = {};
+const mockCommentsStorage: { [tradeId: string]: TradeComment[] } = { ...mockComments };
 
 // Mock user (when not authenticated with Supabase)
 const MOCK_USER = {
@@ -34,7 +34,7 @@ export const mockToggleTradeLike = async (tradeId: string): Promise<{ success: b
     }
 
     return { success: true, liked: !wasLiked };
-  } catch (error) {
+  } catch (_error) {
     return { success: false, liked: false, error: 'Mock error occurred' };
   }
 };
@@ -46,7 +46,7 @@ export const mockGetTradeComments = async (tradeId: string): Promise<{ success: 
 
     const comments = mockCommentsStorage[tradeId] || [];
     return { success: true, comments };
-  } catch (error) {
+  } catch (_error) {
     return { success: false, comments: [], error: 'Mock error occurred' };
   }
 };
@@ -93,7 +93,7 @@ export const mockAddTradeComment = async (tradeId: string, content: string): Pro
     mockCommentsStorage[tradeId].push(newComment);
 
     return { success: true, comment: newComment };
-  } catch (error) {
+  } catch (_error) {
     return { success: false, error: 'Mock error occurred' };
   }
 };

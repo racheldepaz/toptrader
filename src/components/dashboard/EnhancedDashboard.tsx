@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import Header from '@/components/Header';
+import React, { useState, useEffect, useCallback } from 'react';
 import EnhancedTradeCard from '@/components/EnhancedTradeCard';
 import { Trade, convertDbTradeToUITrade } from '@/lib/types';
 import { getTradesWithSocialStats } from '@/lib/api/social';
@@ -11,11 +10,7 @@ export default function EnhancedDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [useRealData, setUseRealData] = useState(true);
 
-  useEffect(() => {
-    loadTrades();
-  }, [useRealData]);
-
-  const loadTrades = async () => {
+  const loadTrades = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -46,7 +41,11 @@ export default function EnhancedDashboard() {
     }
 
     setLoading(false);
-  };
+  }, [useRealData]);
+
+  useEffect(() => {
+    loadTrades();
+  }, [loadTrades]);
 
   const handleTradeUpdate = (updatedTrade: Trade) => {
     setTrades(prevTrades => 
