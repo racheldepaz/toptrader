@@ -1,61 +1,207 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import EnhancedTradeCard from '@/components/EnhancedTradeCard';
-import { Trade, convertDbTradeToUITrade } from '@/lib/types';
-import { getTradesWithSocialStats } from '@/lib/api/social';
-import { mockTrades } from '@/lib/mockData';
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
+import { supabase } from '@/lib/supabase';
+import { useAuthModal } from '@/context/AuthModalContext';
+import MultiStepSignupModal from '@/components/auth/MultiStepSignupModal';
 
 export default function EnhancedDashboard() {
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [loading, setLoading] = useState(true);
+  console.log('📊 EnhancedDashboard: Component rendered');
+  
+  const { user } = useSupabaseAuth();
+  const searchParams = useSearchParams();
+  const { 
+    isSignupModalOpen, 
+    openSignupModal, 
+    closeSignupModal, 
+    setSignupStep,
+    signupStep 
+  } = useAuthModal();
+
+  const [trades, setTrades] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useRealData, setUseRealData] = useState(true);
 
-  const loadTrades = useCallback(async () => {
+  console.log('📊 EnhancedDashboard: Current state:', {
+    user: user ? { id: user.id, email: user.email } : null,
+    searchParams: searchParams?.toString(),
+    isSignupModalOpen,
+    signupStep
+  });
+
+  useEffect(() => {
+    console.log('📊 EnhancedDashboard: useEffect for signup flow handling');
+    
+    const signupParam = searchParams?.get('signup');
+    console.log('📊 EnhancedDashboard: signup URL parameter:', signupParam);
+  
+    // Only handle initial email verification, don't override if user is already in signup flow
+    if (signupParam === 'verify' && user && signupStep === 'email') {
+      console.log('📊 EnhancedDashboard: User just verified email, moving to password step');
+      openSignupModal();
+      setSignupStep('password');
+    } else if (signupParam === 'profile' && user) {
+      console.log('📊 EnhancedDashboard: User needs to complete profile setup');
+      openSignupModal();
+      setSignupStep('profile');
+    } else {
+      console.log('📊 EnhancedDashboard: Not interfering with signup flow. Current step:', signupStep);
+    }
+  }, [searchParams, user, openSignupModal, setSignupStep, signupStep]); // Added signupStep to dependencies
+
+  // Check if user needs to complete profile
+  useEffect(() => {
+    const checkUserProfile = async () => {
+      if (!user) return;
+
+      console.log('📊 EnhancedDashboard: Checking if user has completed profile');
+      
+      try {
+        const { data: profile, error } = await supabase
+          .from('users')
+          .select('username, display_name')
+          .eq('id', user.id)
+          .single();
+
+        console.log('📊 EnhancedDashboard: User profile check result:', { profile, error });
+
+        if (error && error.code === 'PGRST116') {
+          // No profile found, user needs to complete signup
+          console.log('📊 EnhancedDashboard: No profile found, opening signup modal for profile step');
+          openSignupModal();
+          setSignupStep('profile');
+        } else if (profile && !profile.username) {
+          // Profile exists but incomplete
+          console.log('📊 EnhancedDashboard: Profile incomplete, opening signup modal for profile step');
+          openSignupModal();
+          setSignupStep('profile');
+        } else {
+          console.log('📊 EnhancedDashboard: User profile complete');
+        }
+      } catch (err) {
+        console.log('📊 EnhancedDashboard: Error checking profile:', err);
+      }
+    };
+
+    // Only check profile if not already in signup flow
+    if (user && !searchParams?.get('signup')) {
+      checkUserProfile();
+    }
+  }, [user, searchParams, openSignupModal, setSignupStep]);
+
+  const loadTrades = async () => {
+    console.log('📊 EnhancedDashboard: Loading trades, useRealData:', useRealData);
     setLoading(true);
     setError(null);
 
-    if (!useRealData) {
-      // Use mock data for demo purposes
-      setTrades(mockTrades);
-      setLoading(false);
-      return;
-    }
-
     try {
-      const result = await getTradesWithSocialStats();
-      
-      if (result.success) {
-        const convertedTrades = result.trades.map(convertDbTradeToUITrade);
-        setTrades(convertedTrades);
+      if (useRealData) {
+        console.log('📊 EnhancedDashboard: Attempting to load real trades from Supabase');
+        const { data, error: supabaseError } = await supabase
+          .from('trades')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (supabaseError) {
+          console.log('📊 EnhancedDashboard: Supabase error:', supabaseError);
+          throw supabaseError;
+        }
+
+        console.log('📊 EnhancedDashboard: Real trades loaded:', data?.length || 0);
+        setTrades(data || []);
       } else {
-        console.error('Failed to load trades:', result.error);
-        setError(result.error || 'Failed to load trades');
-        // Fallback to mock data
+        console.log('📊 EnhancedDashboard: Using mock data');
+        // Mock data for testing
+        const mockTrades = [
+          {
+            id: 1,
+            user_id: 'mock-user',
+            symbol: 'AAPL',
+            action: 'BUY',
+            quantity: 100,
+            price: 150.25,
+            created_at: new Date().toISOString(),
+            username: 'demo_trader',
+            display_name: 'Demo Trader'
+          },
+          {
+            id: 2,
+            user_id: 'mock-user-2',
+            symbol: 'TSLA',
+            action: 'SELL',
+            quantity: 50,
+            price: 205.75,
+            created_at: new Date(Date.now() - 3600000).toISOString(),
+            username: 'tesla_fan',
+            display_name: 'Tesla Fan'
+          }
+        ];
         setTrades(mockTrades);
       }
-    } catch (err) {
-      console.error('Unexpected error loading trades:', err);
-      setError('Unexpected error occurred');
-      // Fallback to mock data
-      setTrades(mockTrades);
+    } catch (err: any) {
+      console.log('📊 EnhancedDashboard: Error loading trades:', err);
+      setError(err.message || 'Failed to load trades');
+      
+      if (useRealData) {
+        console.log('📊 EnhancedDashboard: Falling back to mock data');
+        // Fallback to mock data
+        const mockTrades = [
+          {
+            id: 1,
+            user_id: 'mock-user',
+            symbol: 'AAPL',
+            action: 'BUY',
+            quantity: 100,
+            price: 150.25,
+            created_at: new Date().toISOString(),
+            username: 'demo_trader',
+            display_name: 'Demo Trader'
+          }
+        ];
+        setTrades(mockTrades);
+      }
     }
 
     setLoading(false);
-  }, [useRealData]);
+  };
 
   useEffect(() => {
+    console.log('📊 EnhancedDashboard: useEffect for loading trades');
     loadTrades();
-  }, [loadTrades]);
+  }, [useRealData]);
 
-  const handleTradeUpdate = (updatedTrade: Trade) => {
-    setTrades(prevTrades => 
-      prevTrades.map(trade => 
-        trade.id === updatedTrade.id ? updatedTrade : trade
-      )
-    );
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(price);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const handleTradeAction = (tradeId: number, action: 'like' | 'comment') => {
+    console.log(`📊 EnhancedDashboard: ${action} trade ${tradeId}`);
+    // Handle like/comment functionality
+    setTrades(trades.map(trade => 
+      trade.id === tradeId 
+        ? { ...trade, [`${action}s`]: (trade[`${action}s`] || 0) + 1 }
+        : trade
+    ));
   };
 
   const handleRefresh = () => {
+    console.log('📊 EnhancedDashboard: Manual refresh triggered');
     loadTrades();
   };
 
@@ -166,27 +312,71 @@ export default function EnhancedDashboard() {
             {!loading && (
               <div className="space-y-4">
                 {trades.length > 0 ? (
-                  trades.map(trade => (
-                    <EnhancedTradeCard 
-                      key={trade.id} 
-                      trade={trade} 
-                      onTradeUpdate={handleTradeUpdate}
-                      useMockData={!useRealData}
-                    />
+                  trades.map((trade) => (
+                    <div key={trade.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                            <span className="text-white font-medium text-sm">
+                              {trade.display_name?.[0] || trade.username?.[0] || 'U'}
+                            </span>
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-gray-900">
+                              {trade.display_name || trade.username || 'Unknown User'}
+                            </h4>
+                            <p className="text-sm text-gray-500">@{trade.username || 'unknown'}</p>
+                          </div>
+                        </div>
+                        <span className="text-sm text-gray-500">
+                          {formatDate(trade.created_at)}
+                        </span>
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            trade.action === 'BUY' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {trade.action}
+                          </span>
+                          <span className="font-medium">{trade.quantity} shares of {trade.symbol}</span>
+                          <span className="text-gray-500">at {formatPrice(trade.price)}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center space-x-4">
+                        <button
+                          onClick={() => handleTradeAction(trade.id, 'like')}
+                          className="flex items-center space-x-1 text-gray-500 hover:text-red-500 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-sm">{trade.likes || 0}</span>
+                        </button>
+                        <button
+                          onClick={() => handleTradeAction(trade.id, 'comment')}
+                          className="flex items-center space-x-1 text-gray-500 hover:text-blue-500 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-sm">{trade.comments || 0}</span>
+                        </button>
+                      </div>
+                    </div>
                   ))
                 ) : (
                   <div className="text-center py-12">
-                    <div className="text-gray-500 mb-4">
-                      <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-6m-4 0h-6m-4 0H4" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No trades yet</h3>
-                    <p className="text-gray-500">
-                      {useRealData 
-                        ? 'No trades found in the database. Add some trades to see them here!' 
-                        : 'Switch to mock data to see sample trades.'
-                      }
+                    <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V1a1 1 0 011-1h2a1 1 0 011 1v18a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1h2a1 1 0 011 1v1m0 0h10M9 7h6m-3 4h3" />
+                    </svg>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">No trades yet</h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Start following traders or connect your brokerage to see trades here.
                     </p>
                   </div>
                 )}
@@ -195,6 +385,12 @@ export default function EnhancedDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Signup Modal for continuing the flow */}
+      <MultiStepSignupModal 
+        isOpen={isSignupModalOpen} 
+        onClose={closeSignupModal} 
+      />
     </div>
   );
 }
