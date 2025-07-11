@@ -32,65 +32,89 @@ export default function EnhancedDashboard() {
     signupStep
   });
 
-  useEffect(() => {
-    console.log('📊 EnhancedDashboard: useEffect for signup flow handling');
-    
-    const signupParam = searchParams?.get('signup');
-    console.log('📊 EnhancedDashboard: signup URL parameter:', signupParam);
+// Replace BOTH existing useEffects (signup flow handling + profile checking) with this single useEffect:
+
+useEffect(() => {
+    const handleSignupFlow = async () => {
+      console.log('📊 EnhancedDashboard: Handling signup flow', { 
+        user: user ? { id: user.id, email: user.email } : null, 
+        searchParams: searchParams?.toString(),
+        signupStep 
+      });
   
-    // Only handle initial email verification, don't override if user is already in signup flow
-    if (signupParam === 'verify' && user && signupStep === 'email') {
-      console.log('📊 EnhancedDashboard: User just verified email, moving to password step');
-      openSignupModal();
-      setSignupStep('password');
-    } else if (signupParam === 'profile' && user) {
-      console.log('📊 EnhancedDashboard: User needs to complete profile setup');
-      openSignupModal();
-      setSignupStep('profile');
-    } else {
-      console.log('📊 EnhancedDashboard: Not interfering with signup flow. Current step:', signupStep);
-    }
-  }, [searchParams, user, openSignupModal, setSignupStep, signupStep]); // Added signupStep to dependencies
-
-  // Check if user needs to complete profile
-  useEffect(() => {
-    const checkUserProfile = async () => {
-      if (!user) return;
-
-      console.log('📊 EnhancedDashboard: Checking if user has completed profile');
+      if (!user) {
+        console.log('📊 EnhancedDashboard: No user, skipping signup flow');
+        return;
+      }
+  
+      const signupParam = searchParams?.get('signup');
       
-      try {
-        const { data: profile, error } = await supabase
-          .from('users')
-          .select('username, display_name')
-          .eq('id', user.id)
-          .single();
-
-        console.log('📊 EnhancedDashboard: User profile check result:', { profile, error });
-
-        if (error && error.code === 'PGRST116') {
-          // No profile found, user needs to complete signup
-          console.log('📊 EnhancedDashboard: No profile found, opening signup modal for profile step');
-          openSignupModal();
-          setSignupStep('profile');
-        } else if (profile && !profile.username) {
-          // Profile exists but incomplete
-          console.log('📊 EnhancedDashboard: Profile incomplete, opening signup modal for profile step');
-          openSignupModal();
-          setSignupStep('profile');
-        } else {
-          console.log('📊 EnhancedDashboard: User profile complete');
+      // Handle URL-based signup flow first (from email verification or explicit redirects)
+      if (signupParam === 'verify' && signupStep === 'email') {
+        console.log('📊 EnhancedDashboard: User just verified email, moving to password step');
+        openSignupModal();
+        setSignupStep('password');
+        return;
+      }
+      
+      if (signupParam === 'profile') {
+        console.log('📊 EnhancedDashboard: User needs to complete profile setup (from URL)');
+        openSignupModal();
+        setSignupStep('profile');
+        return;
+      }
+  
+      // If no URL-based signup flow, check if user needs to complete profile
+      // (This catches new Google OAuth users and incomplete profiles)
+      if (!signupParam) {
+        console.log('📊 EnhancedDashboard: No signup URL param, checking if user has completed profile');
+        
+        try {
+          const { data: profile, error } = await supabase
+            .from('users')
+            .select('username, display_name')
+            .eq('id', user.id)
+            .single();
+  
+          console.log('📊 EnhancedDashboard: User profile check result:', { profile, error });
+  
+          if (error && error.code === 'PGRST116') {
+            // No profile found - this is a new user (likely from Google OAuth)
+            console.log('📊 EnhancedDashboard: No profile found, opening signup modal for profile step');
+            openSignupModal();
+            setSignupStep('profile');
+            
+            // Update URL to indicate profile step for consistency
+            if (typeof window !== 'undefined') {
+              const url = new URL(window.location.href);
+              url.searchParams.set('signup', 'profile');
+              window.history.replaceState({}, '', url.toString());
+            }
+          } else if (profile && !profile.username) {
+            // Profile exists but incomplete
+            console.log('📊 EnhancedDashboard: Profile incomplete, opening signup modal for profile step');
+            openSignupModal();
+            setSignupStep('profile');
+            
+            // Update URL to indicate profile step for consistency
+            if (typeof window !== 'undefined') {
+              const url = new URL(window.location.href);
+              url.searchParams.set('signup', 'profile');
+              window.history.replaceState({}, '', url.toString());
+            }
+          } else {
+            console.log('📊 EnhancedDashboard: User profile complete');
+          }
+        } catch (err) {
+          console.log('📊 EnhancedDashboard: Error checking profile:', err);
         }
-      } catch (err) {
-        console.log('📊 EnhancedDashboard: Error checking profile:', err);
+      } else {
+        console.log('📊 EnhancedDashboard: Not interfering with signup flow. Current step:', signupStep);
       }
     };
-
-    // Only check profile if not already in signup flow
-    if (user && !searchParams?.get('signup')) {
-      checkUserProfile();
-    }
-  }, [user, searchParams, openSignupModal, setSignupStep]);
+  
+    handleSignupFlow();
+  }, [searchParams, user, openSignupModal, setSignupStep, signupStep]);
 
   const loadTrades = async () => {
     console.log('📊 EnhancedDashboard: Loading trades, useRealData:', useRealData);
