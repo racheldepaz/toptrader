@@ -32,9 +32,8 @@ export default function EnhancedDashboard() {
     signupStep
   });
 
-// Replace BOTH existing useEffects (signup flow handling + profile checking) with this single useEffect:
 
-useEffect(() => {
+  useEffect(() => {
     const handleSignupFlow = async () => {
       console.log('📊 EnhancedDashboard: Handling signup flow', { 
         user: user ? { id: user.id, email: user.email } : null, 
@@ -65,7 +64,7 @@ useEffect(() => {
       }
   
       // If no URL-based signup flow, check if user needs to complete profile
-      // (This catches new Google OAuth users and incomplete profiles)
+      // This catches new Google OAuth users and incomplete profiles
       if (!signupParam) {
         console.log('📊 EnhancedDashboard: No signup URL param, checking if user has completed profile');
         
@@ -90,9 +89,9 @@ useEffect(() => {
               url.searchParams.set('signup', 'profile');
               window.history.replaceState({}, '', url.toString());
             }
-          } else if (profile && !profile.username) {
-            // Profile exists but incomplete
-            console.log('📊 EnhancedDashboard: Profile incomplete, opening signup modal for profile step');
+          } else if (profile && (!profile.username || profile.username === user.email)) {
+            // Profile exists but incomplete OR username is still the email (Google OAuth new user)
+            console.log('📊 EnhancedDashboard: Profile incomplete or username is email address, opening signup modal for profile step');
             openSignupModal();
             setSignupStep('profile');
             
@@ -109,12 +108,14 @@ useEffect(() => {
           console.log('📊 EnhancedDashboard: Error checking profile:', err);
         }
       } else {
-        console.log('📊 EnhancedDashboard: Not interfering with signup flow. Current step:', signupStep);
+        console.log('📊 EnhancedDashboard: Not interfering with signup flow.');
       }
     };
-  
-    handleSignupFlow();
-  }, [searchParams, user, openSignupModal, setSignupStep, signupStep]);
+
+    if (user) {
+      handleSignupFlow();
+    }
+  }, [user, searchParams, signupStep, openSignupModal, setSignupStep]);
 
   const loadTrades = async () => {
     console.log('📊 EnhancedDashboard: Loading trades, useRealData:', useRealData);
