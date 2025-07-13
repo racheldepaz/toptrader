@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
 import { supabase } from '@/lib/supabase';
+import { getSiteUrl } from '@/lib/url';
 
 interface EnhancedLoginModalProps {
   isOpen: boolean;
@@ -17,17 +18,6 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
   const [useFallback, setUseFallback] = useState(false);
   
   const { login } = useSupabaseAuth();
-
-  // Helper function to get site URL
-  const getSiteUrl = () => {
-    if (process.env.NEXT_PUBLIC_SITE_URL) {
-      return process.env.NEXT_PUBLIC_SITE_URL;
-    }
-    if (typeof window !== 'undefined') {
-      return window.location.origin;
-    }
-    return 'http://localhost:3000';
-  };
 
   const handleGoogleLogin = async () => {
     console.log('🔵 handleGoogleLogin: Starting Google OAuth flow');

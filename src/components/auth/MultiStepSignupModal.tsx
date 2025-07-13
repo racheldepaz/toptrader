@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuthModal, SignupStep } from '@/context/AuthModalContext';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
 import { supabase } from '@/lib/supabase';
+import { getSiteUrl } from '@/lib/url';
 
 interface MultiStepSignupModalProps {
   isOpen: boolean;
@@ -42,28 +43,6 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [profileLoading, setProfileLoading] = useState(false);
-
-  // Add this helper function at the top of your component
-  const getSiteUrl = () => {
-    console.log('🌐 getSiteUrl: Detecting site URL...');
-    
-    // First try environment variable
-    if (process.env.NEXT_PUBLIC_SITE_URL) {
-      console.log('🌐 getSiteUrl: Using env variable:', process.env.NEXT_PUBLIC_SITE_URL);
-      return process.env.NEXT_PUBLIC_SITE_URL;
-    }
-    
-    // Then try to detect from window (client-side)
-    if (typeof window !== 'undefined') {
-      const origin = window.location.origin;
-      console.log('🌐 getSiteUrl: Using window.location.origin:', origin);
-      return origin;
-    }
-    
-    // Fallback for server-side rendering
-    console.log('🌐 getSiteUrl: Using fallback localhost');
-    return 'http://localhost:3000';
-  };
 
   // Check if we're coming back from email verification
   useEffect(() => {
