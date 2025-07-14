@@ -1,20 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Trade, TradeComment } from '@/lib/types';
-import { toggleTradeLike, getTradeComments, addTradeComment } from '@/lib/api/social';
-import { 
-    mockToggleTradeLike, 
-    mockGetTradeComments, 
-    mockAddTradeComment 
-} from '@/lib/api/mockSocial';
+import { toggleTradeLike, getTradeComments, addTradeComment, deleteTradeComment } from '@/lib/api/social';
 import { supabase } from '@/lib/supabase';
+import CommentItem from '@/components/CommentItem'; // Adjust path as needed
 
 interface EnhancedTradeCardProps {
     trade: Trade;
     onTradeUpdate?: (updatedTrade: Trade) => void;
-    useMockData?: boolean; // Add this prop to control data source
 }
 
-export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = false }: EnhancedTradeCardProps) {
+export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTradeCardProps) {
     const [localTrade, setLocalTrade] = useState(trade);
     const [isLiking, setIsLiking] = useState(false);
     const [showComments, setShowComments] = useState(false);
@@ -27,16 +22,11 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = 
     // Check authentication status
     useEffect(() => {
         const checkAuth = async () => {
-            if (useMockData) {
-                setIsAuthenticated(true); // Always authenticated in mock mode
-                return;
-            }
-            
             const { data: { user } } = await supabase.auth.getUser();
             setIsAuthenticated(!!user);
         };
         checkAuth();
-    }, [useMockData]);
+    }, []);
 
     // Sync local trade with prop changes
     useEffect(() => {
@@ -46,7 +36,7 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = 
     const handleLike = async () => {
         if (isLiking) return;
         
-        if (!isAuthenticated && !useMockData) {
+        if (!isAuthenticated) {
             alert('Please log in to like trades');
             return;
         }
@@ -54,9 +44,7 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = 
         setIsLiking(true);
         
         try {
-            const result = useMockData 
-                ? await mockToggleTradeLike(localTrade.id)
-                : await toggleTradeLike(localTrade.id);
+            const result = await toggleTradeLike(localTrade.id);
             
             if (result.success) {
                 const updatedTrade = {
@@ -68,9 +56,7 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = 
                 onTradeUpdate?.(updatedTrade);
             } else {
                 console.error('Failed to toggle like:', result.error);
-                if (!useMockData) {
-                    alert(`Failed to ${result.liked ? 'unlike' : 'like'} trade: ${result.error}`);
-                }
+                alert(`Failed to ${result.liked ? 'unlike' : 'like'} trade: ${result.error}`);
             }
         } catch (error) {
             console.error('Unexpected error during like:', error);
@@ -86,17 +72,13 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = 
             setIsLoadingComments(true);
             
             try {
-                const result = useMockData 
-                    ? await mockGetTradeComments(localTrade.id)
-                    : await getTradeComments(localTrade.id);
+                const result = await getTradeComments(localTrade.id);
                     
                 if (result.success) {
                     setComments(result.comments);
                 } else {
                     console.error('Failed to load comments:', result.error);
-                    if (!useMockData) {
-                        alert(`Failed to load comments: ${result.error}`);
-                    }
+                    alert(`Failed to load comments: ${result.error}`);
                 }
             } catch (error) {
                 console.error('Unexpected error loading comments:', error);
@@ -112,7 +94,7 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = 
         e.preventDefault();
         if (!commentInput.trim() || isAddingComment) return;
 
-        if (!isAuthenticated && !useMockData) {
+        if (!isAuthenticated) {
             alert('Please log in to comment on trades');
             return;
         }
@@ -123,9 +105,7 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = 
         setIsAddingComment(true);
         
         try {
-            const result = useMockData 
-                ? await mockAddTradeComment(localTrade.id, commentToAdd)
-                : await addTradeComment(localTrade.id, commentToAdd);
+            const result = await addTradeComment(localTrade.id, commentToAdd);
             
             if (result.success && result.comment) {
                 // Check if comment already exists (prevent duplicates)
@@ -150,9 +130,7 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = 
                 console.error('Failed to add comment:', result.error);
                 // Restore the comment input if it failed
                 setCommentInput(commentToAdd);
-                if (!useMockData) {
-                    alert(`Failed to add comment: ${result.error}`);
-                }
+                alert(`Failed to add comment: ${result.error}`);
             }
         } catch (error) {
             console.error('Unexpected error adding comment:', error);
@@ -162,6 +140,21 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = 
         }
         
         setIsAddingComment(false);
+    };
+
+    const handleDeleteComment = (commentId: string) => {
+        // Remove the comment from local state
+        setComments(prevComments => 
+            prevComments.filter(comment => comment.id !== commentId)
+        );
+        
+        // Update the comment count
+        const updatedTrade = {
+            ...localTrade,
+            comments: Math.max(0, localTrade.comments - 1)
+        };
+        setLocalTrade(updatedTrade);
+        onTradeUpdate?.(updatedTrade);
     };
 
     return (
@@ -240,22 +233,13 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = 
                             ) : (
                                 <>
                                     {/* Comments List */}
-                                    <div className="space-y-3 mb-4">
+                                    <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
                                         {comments.map((comment) => (
-                                            <div key={comment.id} className="flex space-x-3">
-                                                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                                                    {comment.user?.avatar || 'U'}
-                                                </div>
-                                                <div className="flex-1">
-                                                    <div className="flex items-center space-x-2">
-                                                        <span className="font-medium text-sm">@{comment.user?.username}</span>
-                                                        <span className="text-xs text-gray-500">
-                                                            {new Date(comment.createdAt).toLocaleDateString()}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-sm text-gray-700 mt-1">{comment.content}</p>
-                                                </div>
-                                            </div>
+                                            <CommentItem
+                                                key={comment.id}
+                                                comment={comment}
+                                                onDelete={handleDeleteComment}
+                                            />
                                         ))}
                                         
                                         {comments.length === 0 && (
@@ -264,30 +248,31 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate, useMockData = 
                                             </p>
                                         )}
                                     </div>
-                                    
-                                    {/* Add Comment Form */}
-                                    <form onSubmit={handleAddComment} className="flex space-x-3">
-                                        <div className="w-8 h-8 bg-gray-400 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                                            U
-                                        </div>
-                                        <div className="flex-1">
-                                            <input
-                                                type="text"
-                                                value={commentInput}
-                                                onChange={(e) => setCommentInput(e.target.value)}
-                                                placeholder="Add a comment..."
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                disabled={isAddingComment}
-                                            />
-                                        </div>
+
+                                    {/* Add Comment Section */}
+                                    <div className="flex space-x-2">
+                                        <input
+                                            type="text"
+                                            value={commentInput}
+                                            onChange={(e) => setCommentInput(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    handleAddComment(e as any);
+                                                }
+                                            }}
+                                            placeholder={isAuthenticated ? "Add a comment..." : "Sign in to comment"}
+                                            disabled={!isAuthenticated || isAddingComment}
+                                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                        />
                                         <button
-                                            type="submit"
-                                            disabled={!commentInput.trim() || isAddingComment}
-                                            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                            onClick={handleAddComment}
+                                            disabled={!commentInput.trim() || isAddingComment || !isAuthenticated}
+                                            className="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                         >
-                                            {isAddingComment ? 'Posting...' : 'Post'}
+                                            {isAddingComment ? 'Adding...' : 'Post'}
                                         </button>
-                                    </form>
+                                    </div>
                                 </>
                             )}
                         </div>

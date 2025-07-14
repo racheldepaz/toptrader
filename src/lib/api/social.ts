@@ -164,42 +164,37 @@ export const addTradeComment = async (tradeId: string, content: string): Promise
   }
 }
 
-export const deleteTradeComment = async (commentId: string): Promise<{ success: boolean; error?: string }> => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return { success: false, error: 'User not authenticated' }
+export const deleteTradeComment = async (commentId: string): Promise<{
+    success: boolean;
+    error?: string;
+  }> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        return { success: false, error: 'User not authenticated' };
+      }
+  
+      const { data, error } = await supabase.rpc('delete_trade_comment', {
+        comment_id: commentId,
+        requesting_user_id: user.id
+      });
+  
+      if (error) {
+        console.error('Delete comment error:', error);
+        return { success: false, error: error.message };
+      }
+  
+      if (!data.success) {
+        return { success: false, error: data.error };
+      }
+  
+      return { success: true };
+    } catch (err) {
+      console.error('Unexpected error deleting comment:', err);
+      return { success: false, error: 'Unexpected error occurred' };
     }
-
-    // First check if the comment belongs to the current user
-    const { data: comment, error: fetchError } = await supabase
-      .from('trade_comments')
-      .select('user_id')
-      .eq('id', commentId)
-      .single()
-
-    if (fetchError) {
-      return { success: false, error: 'Comment not found' }
-    }
-
-    if (comment.user_id !== user.id) {
-      return { success: false, error: 'Not authorized to delete this comment' }
-    }
-
-    const { error } = await supabase
-      .from('trade_comments')
-      .delete()
-      .eq('id', commentId)
-
-    if (error) {
-      return { success: false, error: error.message }
-    }
-
-    return { success: true }
-  } catch (_error) {
-    return { success: false, error: 'Unexpected error occurred' }
-  }
-}
+  };
 
 export const getTradesWithSocialStats = async (): Promise<{
     success: boolean;
@@ -225,6 +220,8 @@ export const getTradesWithSocialStats = async (): Promise<{
       return { success: false, trades: [], error: 'Unexpected error occurred' };
     }
   };
+
+
 
 // UTILITY FUNCTIONS
 export const getLikesCount = async (tradeId: string): Promise<number> => {
