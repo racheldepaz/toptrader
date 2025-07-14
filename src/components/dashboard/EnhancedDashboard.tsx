@@ -10,6 +10,13 @@ import EnhancedTradeCard from '@/components/EnhancedTradeCard';
 import { Trade, convertDbTradeToUITrade } from '@/lib/types';
 import { getTradesWithSocialStats } from '@/lib/api/social';
 
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: "Dashboard - TopTrader",
+  description: "View today's top traders and recent trades",
+};
+
 // Define types for our stats
 interface UserStats {
   total_trades: number;

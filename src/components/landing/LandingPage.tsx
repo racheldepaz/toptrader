@@ -12,6 +12,13 @@ import LoginModal from '@/components/auth/LoginModal';
 import SignupModal from '@/components/auth/SignupModal';
 import { useAuthModal } from '@/context/AuthModalContext';
 
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: "TopTrader - Social Trading Platform",
+  description: "Join the social trading revolution. Share your wins, learn from the best, and climb the leaderboards.",
+};
+
 interface LandingPageProps {
   children?: ReactNode;
 }

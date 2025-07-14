@@ -13,6 +13,18 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const metadata: Metadata = {
+  title: "TopTrader - Social Trading Platform",
+  description: "Join the social trading revolution. Share your wins, learn from the best, and climb the leaderboards.",
+  keywords: ["trading", "social trading", "stocks", "crypto", "leaderboard"],
+  authors: [{ name: "TopTrader" }],
+  openGraph: {
+    title: "TopTrader - Social Trading Platform",
+    description: "Join the social trading revolution",
+    type: "website",
+  },
+};
+
 export default function RootLayout({
   children,
 }: {
