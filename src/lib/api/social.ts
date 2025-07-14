@@ -201,93 +201,30 @@ export const deleteTradeComment = async (commentId: string): Promise<{ success: 
   }
 }
 
-// TRADES WITH SOCIAL STATS
-export const getTradesWithSocialStats = async (): Promise<{ success: boolean; trades: TradeWithSocialStats[]; error?: string }> => {
-  try {
-    // Get current user for like status
-    const { data: { user } } = await supabase.auth.getUser()
-
-    // Get trades and users separately to avoid the array issue
-    const { data: tradesData, error: tradesError } = await supabase
-      .from('trades')
-      .select('*')
-      .eq('visibility', 'public')
-      .order('created_at', { ascending: false })
-      .limit(20)
-
-    if (tradesError) {
-      return { success: false, trades: [], error: tradesError.message }
-    }
-
-    // Get all unique user IDs from trades
-    const userIds = [...new Set(tradesData?.map(trade => trade.user_id) || [])]
-    
-    // Get user data separately
-    const { data: usersData } = await supabase
-      .from('users')
-      .select('id, username, display_name')
-      .in('id', userIds)
-
-    // Create a user lookup map
-    const userLookup = new Map()
-    usersData?.forEach(user => {
-      userLookup.set(user.id, user)
-    })
-
-    // Get likes and comments counts for each trade
-    const tradesWithStats: TradeWithSocialStats[] = []
-
-    for (const trade of tradesData || []) {
-      // Get likes count
-      const { count: likesCount } = await supabase
-        .from('trade_likes')
-        .select('*', { count: 'exact', head: true })
-        .eq('trade_id', trade.id)
-
-      // Get comments count
-      const { count: commentsCount } = await supabase
-        .from('trade_comments')
-        .select('*', { count: 'exact', head: true })
-        .eq('trade_id', trade.id)
-
-      // Check if current user has liked this trade
-      let userHasLiked = false
-      if (user) {
-        const { data: userLike } = await supabase
-          .from('trade_likes')
-          .select('id')
-          .eq('trade_id', trade.id)
-          .eq('user_id', user.id)
-          .maybeSingle()
-        userHasLiked = !!userLike
+export const getTradesWithSocialStats = async (): Promise<{
+    success: boolean;
+    trades: TradeWithSocialStats[];
+    error?: string;
+  }> => {
+    try {
+      const { data, error } = await supabase.rpc('get_trades_with_social_stats');
+  
+      if (error) {
+        console.error('Supabase RPC error:', error);
+        return { success: false, trades: [], error: error.message };
       }
-
-      // Get user data from lookup
-      const tradeUser = userLookup.get(trade.user_id)
-
-      tradesWithStats.push({
-        id: trade.id,
-        user_id: trade.user_id,
-        username: tradeUser?.username || '',
-        display_name: tradeUser?.display_name,
-        symbol: trade.symbol,
-        company_name: trade.company_name,
-        trade_type: trade.trade_type,
-        profit_loss_percentage: trade.profit_loss_percentage,
-        description: trade.description,
-        executed_at: trade.executed_at,
-        created_at: trade.created_at,
-        likes_count: likesCount || 0,
-        comments_count: commentsCount || 0,
-        user_has_liked: userHasLiked
-      })
+  
+      // The function returns JSON array, so we can use it directly
+      const trades: TradeWithSocialStats[] = data || [];
+  
+      console.log('✅ Loaded trades from RPC:', trades.length, 'trades');
+      
+      return { success: true, trades };
+    } catch (err) {
+      console.error('Unexpected error in getTradesWithSocialStats:', err);
+      return { success: false, trades: [], error: 'Unexpected error occurred' };
     }
-
-    return { success: true, trades: tradesWithStats }
-  } catch (_error) {
-    return { success: false, trades: [], error: 'Unexpected error occurred' }
-  }
-}
+  };
 
 // UTILITY FUNCTIONS
 export const getLikesCount = async (tradeId: string): Promise<number> => {
