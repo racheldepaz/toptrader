@@ -12,6 +12,7 @@ import { getTradesWithSocialStats } from '@/lib/api/social';
 
 import type { Metadata } from 'next';
 
+
 export const metadata: Metadata = {
   title: "Dashboard - TopTrader",
   description: "View today's top traders and recent trades",
@@ -66,6 +67,8 @@ const PerformanceWidget = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+
+
     const loadPerformance = async () => {
       if (!user) {
         setLoading(false);
@@ -247,6 +250,7 @@ const LeaderboardWidget = () => {
   };
 
   return (
+    
     <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold text-gray-900">{getBoardTitle()}</h3>

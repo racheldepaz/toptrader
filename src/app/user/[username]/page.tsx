@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Calendar, UserPlus, UserCheck, Users, TrendingUp, Share2, Trophy, Target } from 'lucide-react';
+import { Calendar, UserPlus, UserCheck, Users, TrendingUp, Share2, Trophy, Target, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
 import ShareableStatsCard from '@/components/ShareableStatsCard';
@@ -41,8 +41,10 @@ export default function UserProfilePage() {
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [stats, setStats] = useState<TradingStats | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('day');
+  const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('month');
   const [showShareCard, setShowShareCard] = useState(false);
+  const [allStats, setAllStats] = useState<any>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (username) {
@@ -116,11 +118,15 @@ export default function UserProfilePage() {
         .single();
 
       if (userStats) {
+        // Store all stats
+        setAllStats(userStats);
+        
+        // Set initial stats for the default period (month)
         setStats({
-          win_rate: userStats.win_rate || 0,
-          total_trades: userStats.total_trades || 0,
-          best_trade_percentage: userStats.best_trade_percentage || 0,
-          average_gain_percentage: userStats.average_gain_percentage || 0
+          win_rate: userStats.monthly_win_rate || 0,
+          total_trades: userStats.monthly_trades || 0,
+          best_trade_percentage: userStats.monthly_best_trade || 0,
+          average_gain_percentage: userStats.monthly_average_gain || 0
         });
       }
     } catch (error) {
@@ -129,6 +135,40 @@ export default function UserProfilePage() {
       setLoading(false);
     }
   };
+
+  // Update stats when period changes
+  useEffect(() => {
+    if (!allStats) return;
+    
+    const periodMap = {
+      day: {
+        win_rate: allStats.daily_win_rate || 0,
+        total_trades: allStats.daily_trades || 0,
+        best_trade_percentage: allStats.daily_best_trade || 0,
+        average_gain_percentage: allStats.daily_average_gain || 0
+      },
+      week: {
+        win_rate: allStats.weekly_win_rate || 0,
+        total_trades: allStats.weekly_trades || 0,
+        best_trade_percentage: allStats.weekly_best_trade || 0,
+        average_gain_percentage: allStats.weekly_average_gain || 0
+      },
+      month: {
+        win_rate: allStats.monthly_win_rate || 0,
+        total_trades: allStats.monthly_trades || 0,
+        best_trade_percentage: allStats.monthly_best_trade || 0,
+        average_gain_percentage: allStats.monthly_average_gain || 0
+      },
+      year: {
+        win_rate: allStats.yearly_win_rate || 0,
+        total_trades: allStats.yearly_trades || 0,
+        best_trade_percentage: allStats.yearly_best_trade || 0,
+        average_gain_percentage: allStats.yearly_average_gain || 0
+      }
+    };
+    
+    setStats(periodMap[selectedPeriod]);
+  }, [selectedPeriod, allStats]);
 
   const handleFollowToggle = async () => {
     if (!currentUser || !profile) return;
@@ -169,6 +209,68 @@ export default function UserProfilePage() {
 
   const handleShareStats = () => {
     setShowShareCard(true);
+  };
+
+  const handleRefreshStats = async () => {
+    if (!profile) return;
+    
+    setRefreshing(true);
+    try {
+      // Call the PostgreSQL function to refresh stats
+      const { error } = await supabase
+        .rpc('refresh_all_user_stats', { p_user_id: profile.id });
+      
+      if (error) {
+        console.error('Error refreshing stats:', error);
+        alert('Failed to refresh stats');
+        return;
+      }
+      
+      // Re-fetch the updated stats
+      const { data: updatedStats } = await supabase
+        .from('user_stats')
+        .select('*')
+        .eq('user_id', profile.id)
+        .single();
+      
+      if (updatedStats) {
+        setAllStats(updatedStats);
+        // Update displayed stats for current period
+        const periodMap = {
+          day: {
+            win_rate: updatedStats.daily_win_rate || 0,
+            total_trades: updatedStats.daily_trades || 0,
+            best_trade_percentage: updatedStats.daily_best_trade || 0,
+            average_gain_percentage: updatedStats.daily_average_gain || 0
+          },
+          week: {
+            win_rate: updatedStats.weekly_win_rate || 0,
+            total_trades: updatedStats.weekly_trades || 0,
+            best_trade_percentage: updatedStats.weekly_best_trade || 0,
+            average_gain_percentage: updatedStats.weekly_average_gain || 0
+          },
+          month: {
+            win_rate: updatedStats.monthly_win_rate || 0,
+            total_trades: updatedStats.monthly_trades || 0,
+            best_trade_percentage: updatedStats.monthly_best_trade || 0,
+            average_gain_percentage: updatedStats.monthly_average_gain || 0
+          },
+          year: {
+            win_rate: updatedStats.yearly_win_rate || 0,
+            total_trades: updatedStats.yearly_trades || 0,
+            best_trade_percentage: updatedStats.yearly_best_trade || 0,
+            average_gain_percentage: updatedStats.yearly_average_gain || 0
+          }
+        };
+        
+        setStats(periodMap[selectedPeriod]);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Failed to refresh stats');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -316,6 +418,17 @@ export default function UserProfilePage() {
                 >
                   <Share2 className="w-5 h-5" />
                 </button>
+                {/* Refresh Button - Only show for own profile */}
+                {currentUser && currentUser.id === profile.id && (
+                  <button
+                    onClick={handleRefreshStats}
+                    disabled={refreshing}
+                    className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                    title="Refresh stats"
+                  >
+                    <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+                  </button>
+                )}
               </div>
             </div>
 
