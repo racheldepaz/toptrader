@@ -66,9 +66,9 @@ export interface TradeWithSocialStats {
     description?: string;
     executed_at: string;
     created_at: string;
-    likes_count: number;
-    comments_count: number;
-    user_has_liked: boolean;
+    like_count: number;
+    comment_count: number;
+    is_liked_by_user: boolean;
 }
 
 // For API responses
@@ -106,9 +106,9 @@ export const convertDbTradeToUITrade = (dbTrade: TradeWithSocialStats): Trade =>
         percentage: dbTrade.profit_loss_percentage,
         timeAgo: formatTimeAgo(dbTrade.created_at),
         description: dbTrade.description || '',
-        likes: dbTrade.likes_count,
-        comments: dbTrade.comments_count,
-        userHasLiked: dbTrade.user_has_liked,
+        likes: dbTrade.like_count,
+        comments: dbTrade.comment_count,
+        userHasLiked: dbTrade.is_liked_by_user,
         executedAt: dbTrade.executed_at,
         createdAt: dbTrade.created_at,
         showAmounts: false,
