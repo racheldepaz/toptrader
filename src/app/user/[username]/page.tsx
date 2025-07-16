@@ -8,6 +8,8 @@ import { Calendar, UserPlus, UserCheck, Users, TrendingUp, Share2, Trophy, Targe
 import Link from 'next/link';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
 import ShareableStatsCard from '@/components/ShareableStatsCard';
+import EditableBioSection from '@/components/EditableBioSection';
+import ProfileTradeHistory from '@/components/ProfileTradeHistory';
 
 interface UserProfile {
   id: string;
@@ -304,87 +306,98 @@ export default function UserProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Profile Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-4xl mx-auto px-4 py-8">
-          <div className="flex items-center space-x-6">
-            {/* Avatar */}
-            <div className="flex-shrink-0">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold">
-                {profile.display_name?.charAt(0) || profile.username.charAt(0).toUpperCase()}
-              </div>
-            </div>
-
-            {/* Profile Info */}
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold text-gray-900">
-                {profile.display_name || profile.username}
-              </h1>
-              <p className="text-gray-600">@{profile.username}</p>
-              
-              {profile.bio && (
-                <p className="mt-2 text-gray-700">{profile.bio}</p>
-              )}
-
-              <div className="mt-3 flex items-center text-sm text-gray-600">
-                <Calendar className="w-4 h-4 mr-1" />
-                Joined {formatDate(profile.created_at)}
-              </div>
-
-              {/* Follower/Following counts */}
-              <div className="mt-3 flex items-center space-x-4">
-                <div className="text-sm">
-                  <span className="font-semibold text-gray-900">{followerCount}</span>
-                  <span className="text-gray-600 ml-1">followers</span>
-                </div>
-                <div className="text-sm">
-                  <span className="font-semibold text-gray-900">{followingCount}</span>
-                  <span className="text-gray-600 ml-1">following</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Follow Button */}
-            {currentUser && currentUser.id !== profile.id && (
-              <div>
-                <button
-                  onClick={handleFollowToggle}
-                  disabled={followLoading}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
-                    isFollowing
-                      ? isFollowingBack
-                        ? 'bg-purple-100 hover:bg-purple-200 text-purple-700'
-                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  {isFollowing ? (
-                    isFollowingBack ? (
-                      <>
-                        <Users className="w-4 h-4" />
-                        <span>Friends</span>
-                      </>
-                    ) : (
-                      <>
-                        <UserCheck className="w-4 h-4" />
-                        <span>Following</span>
-                      </>
-                    )
-                  ) : (
-                    <>
-                      <UserPlus className="w-4 h-4" />
-                      <span>Follow</span>
-                    </>
-                  )}
-                </button>
-                {!isFollowing && isFollowingBack && (
-                  <p className="text-xs text-gray-500 mt-1">Follows you</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+    {/* Profile Header */}
+<div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+  <div className="flex items-start space-x-4">
+    {/* Avatar */}
+    <div className="flex-shrink-0">
+      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold">
+        {profile.display_name?.charAt(0) || profile.username.charAt(0).toUpperCase()}
       </div>
+    </div>
+
+    {/* Profile Info */}
+    <div className="flex-1 min-w-0">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-gray-900 truncate">
+            {profile.display_name || profile.username}
+          </h1>
+          <p className="text-gray-600 text-sm">@{profile.username}</p>
+
+
+          {/* Bio Section */}
+          <div className="mt-2">
+            <EditableBioSection
+              bio={profile.bio}
+              isOwnProfile={currentUser?.id === profile.id}
+              onBioUpdate={(newBio) => {
+                setProfile(prev => prev ? { ...prev, bio: newBio } : null);
+              }}
+            />
+          </div>
+
+          
+          {/* Follower/Following counts */}
+          <div className="mt-3 flex items-center space-x-4">
+            <div className="text-sm">
+              <span className="font-semibold text-gray-900">{followerCount}</span>
+              <span className="text-gray-600 ml-1">followers</span>
+            </div>
+            <div className="text-sm">
+              <span className="font-semibold text-gray-900">{followingCount}</span>
+              <span className="text-gray-600 ml-1">following</span>
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center text-sm text-gray-600">
+            <Calendar className="w-4 h-4 mr-1 flex-shrink-0" />
+            <span>Joined {formatDate(profile.created_at)}</span>
+          </div>
+
+          
+
+        </div>
+
+        {/* Follow Button */}
+        {currentUser && currentUser.id !== profile.id && (
+          <div className="flex-shrink-0 ml-4">
+            <button
+              onClick={handleFollowToggle}
+              disabled={followLoading}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+                isFollowing
+                  ? isFollowingBack
+                    ? 'bg-purple-100 hover:bg-purple-200 text-purple-700'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {isFollowing ? (
+                isFollowingBack ? (
+                  <>
+                    <Users className="w-4 h-4" />
+                    <span>Friends</span>
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="w-4 h-4" />
+                    <span>Following</span>
+                  </>
+                )
+              ) : (
+                <>
+                  <UserPlus className="w-4 h-4" />
+                  <span>Follow</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+</div>
 
       {/* Trading Stats Section */}
       {stats && (
@@ -484,8 +497,13 @@ export default function UserProfilePage() {
       )}
 
       {/* Content Section - We'll add more here later */}
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <p className="text-gray-600">Trading history coming soon...</p>
+      {/* Trade History Section */}
+      <div className="space-y-6">
+        <ProfileTradeHistory
+          userId={profile.id}
+          isOwnProfile={currentUser?.id === profile.id}
+          username={profile.username}
+        />
       </div>
 
       {/* Shareable Stats Card Modal */}

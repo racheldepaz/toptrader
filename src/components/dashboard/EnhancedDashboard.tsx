@@ -67,8 +67,6 @@ const PerformanceWidget = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-
-
     const loadPerformance = async () => {
       if (!user) {
         setLoading(false);
@@ -76,14 +74,39 @@ const PerformanceWidget = () => {
       }
 
       try {
+        console.log('🔍 Loading performance for user:', user.id);
+        
         const { data, error } = await supabase.rpc('get_user_performance', {
           target_user_id: user.id
         });
 
+        console.log('📊 get_user_performance result:', { data, error });
+
         if (error) throw error;
-        setStats(data);
+
+        // The function should return a single row, but it might be wrapped in an array
+        const statsData = Array.isArray(data) ? data[0] : data;
+        
+        console.log('📈 Processed stats data:', statsData);
+
+        if (statsData) {
+          setStats(statsData);
+        } else {
+          // No data returned - user has no stats yet
+          setStats({
+            total_trades: 0,
+            win_rate: 0,
+            avg_return: 0,
+            best_trade: 0,
+            worst_trade: 0,
+            trades_this_week: 0,
+            trades_this_month: 0,
+            total_likes_received: 0,
+            total_comments_received: 0
+          });
+        }
       } catch (err) {
-        console.error('Error loading performance:', err);
+        console.error('❌ Error loading performance:', err);
         setError('Failed to load performance');
       }
       setLoading(false);
@@ -105,12 +128,24 @@ const PerformanceWidget = () => {
     );
   }
 
-  if (error || !stats || !user) {
+  if (error || !user) {
     return (
       <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
         <h3 className="font-bold text-gray-900 mb-4">Your Performance</h3>
         <div className="text-sm text-gray-500">
           {!user ? 'Sign in to see your performance' : error || 'No trading data yet. Make your first trade!'}
+        </div>
+      </div>
+    );
+  }
+
+  // Show empty state for new users with no stats
+  if (!stats || stats.total_trades === 0) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <h3 className="font-bold text-gray-900 mb-4">Your Performance</h3>
+        <div className="text-sm text-gray-500">
+          No trading data yet. Make your first trade to see your performance!
         </div>
       </div>
     );
@@ -125,9 +160,9 @@ const PerformanceWidget = () => {
         <div className="flex justify-between items-center">
           <span className="text-sm text-gray-600">Win Rate</span>
           <span className={`text-sm font-medium ${
-            stats.win_rate >= 50 ? 'text-green-600' : 'text-red-600'
+            (stats.win_rate || 0) >= 50 ? 'text-green-600' : 'text-red-600'
           }`}>
-            {stats.win_rate}%
+            {((stats.win_rate || 0)).toFixed(1)}%
           </span>
         </div>
 
@@ -135,17 +170,9 @@ const PerformanceWidget = () => {
         <div className="flex justify-between items-center">
           <span className="text-sm text-gray-600">Avg Return</span>
           <span className={`text-sm font-medium ${
-            stats.avg_return >= 0 ? 'text-green-600' : 'text-red-600'
+            (stats.avg_return || 0) >= 0 ? 'text-green-600' : 'text-red-600'
           }`}>
-            {stats.avg_return > 0 ? '+' : ''}{stats.avg_return}%
-          </span>
-        </div>
-
-        {/* Best Trade */}
-        <div className="flex justify-between items-center">
-          <span className="text-sm text-gray-600">Best Trade</span>
-          <span className="text-sm font-medium text-green-600">
-            +{stats.best_trade}%
+            {(stats.avg_return || 0) > 0 ? '+' : ''}{((stats.avg_return || 0)).toFixed(2)}%
           </span>
         </div>
 
@@ -153,16 +180,40 @@ const PerformanceWidget = () => {
         <div className="flex justify-between items-center">
           <span className="text-sm text-gray-600">Total Trades</span>
           <span className="text-sm font-medium text-gray-900">
-            {stats.total_trades}
+            {stats.total_trades || 0}
           </span>
         </div>
 
-        {/* Activity */}
-        <div className="pt-2 border-t border-gray-100">
-          <div className="flex justify-between items-center text-xs text-gray-500">
-            <span>This week: {stats.trades_this_week}</span>
-            <span>❤️ {stats.total_likes_received}</span>
-          </div>
+        {/* Best Trade */}
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-gray-600">Best Trade</span>
+          <span className="text-sm font-medium text-green-600">
+            +{((stats.best_trade || 0)).toFixed(2)}%
+          </span>
+        </div>
+
+        {/* Worst Trade */}
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-gray-600">Worst Trade</span>
+          <span className="text-sm font-medium text-red-600">
+            {((stats.worst_trade || 0)).toFixed(2)}%
+          </span>
+        </div>
+
+        {/* Trades This Week */}
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-gray-600">Trades This Week</span>
+          <span className="text-sm font-medium text-gray-900">
+            {stats.trades_this_week || 0}
+          </span>
+        </div>
+
+        {/* Trades This Month */}
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-gray-600">Trades This Month</span>
+          <span className="text-sm font-medium text-gray-900">
+            {stats.trades_this_month || 0}
+          </span>
         </div>
       </div>
     </div>
