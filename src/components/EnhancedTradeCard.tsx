@@ -3,6 +3,8 @@ import { Trade, TradeComment } from '@/lib/types';
 import { toggleTradeLike, getTradeComments, addTradeComment, deleteTradeComment } from '@/lib/api/social';
 import { supabase } from '@/lib/supabase';
 import CommentItem from '@/components/CommentItem'; // Adjust path as needed
+import Link from 'next/link';
+
 
 interface EnhancedTradeCardProps {
     trade: Trade;
@@ -161,14 +163,19 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
         <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
             <div className="flex items-start space-x-4">
                 {/* User Avatar */}
+                <Link href={`/user/${localTrade.user.username}`} className="flex-shrink-0">
                 <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white font-bold">
                     {localTrade.user.avatar}
                 </div>
+                </Link>
                 
                 <div className="flex-1">
                     {/* User info and timestamp */}
                     <div className="flex items-center space-x-2 mb-2">
-                        <span className="font-bold text-gray-900">@{localTrade.user.username}</span>
+                    <Link href={`/user/${localTrade.user.username}`}className="font-bold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer"
+                     >
+                        @{localTrade.user.username}
+                        </Link>
                         <span className="text-gray-500 text-sm">{localTrade.timeAgo}</span>
                     </div>
                     
