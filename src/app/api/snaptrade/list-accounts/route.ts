@@ -1,28 +1,27 @@
-// app/api/snaptrade/register-user/route.ts
+// app/api/snaptrade/list-accounts/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { makeSnapTradeRequest } from '../utils';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await request.json();
+    const { userId, userSecret } = await request.json();
     
-    if (!userId) {
+    if (!userId || !userSecret) {
       return NextResponse.json(
-        { error: 'userId is required' },
+        { error: 'userId and userSecret are required' },
         { status: 400 }
       );
     }
 
     const data = await makeSnapTradeRequest(
-      'POST',
-      '/api/v1/snapTrade/registerUser',
-      {},
-      { userId }
+      'GET',
+      '/api/v1/accounts',
+      { userId, userSecret }
     );
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error('SnapTrade Register User Error:', error);
+    console.error('SnapTrade List Accounts Error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
