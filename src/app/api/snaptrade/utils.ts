@@ -16,30 +16,32 @@ export const snapTradeConfig: SnapTradeConfig = {
 export function generateSignature(
   method: string,
   path: string,
-  body: any = null,
-  timestamp: number,
-  clientId: string
+  queryString: string,
+  requestData: any = {}
 ): string {
-  // Build query string exactly as SnapTrade expects
-  const queryString = `clientId=${clientId}&timestamp=${timestamp}`;
-  
-  // Create signature object - this must match SnapTrade's expected format exactly
+  // Create signature object exactly as SnapTrade expects
   const sigObject = {
-    content: body || {},
+    content: requestData,
     path: path,
     query: queryString
   };
 
-  // Convert to JSON string with no spaces (critical for SnapTrade)
+  // Convert to JSON string - SnapTrade's docs show using JSON.stringify without options
   const sigContent = JSON.stringify(sigObject);
   
   console.log('Signature generation:', {
+    method,
+    path,
+    queryString,
+    requestData,
     sigObject,
     sigContent,
     consumerKey: snapTradeConfig.consumerKey.substring(0, 10) + '...'
   });
 
-  const hmac = crypto.createHmac('sha256', snapTradeConfig.consumerKey);
+  // Use encodeURI on consumer key as shown in SnapTrade docs
+  const encodedConsumerKey = encodeURI(snapTradeConfig.consumerKey);
+  const hmac = crypto.createHmac('sha256', encodedConsumerKey);
   return hmac.update(sigContent).digest('base64');
 }
 
@@ -52,28 +54,38 @@ export async function makeSnapTradeRequest(
   const timestamp = Math.floor(Date.now() / 1000);
   const clientId = snapTradeConfig.clientId;
   
-  // Generate signature
-  const signature = generateSignature(method, path, body, timestamp, clientId);
-  
-  // Build query string with clientId and timestamp only
+  // Build query string with clientId and timestamp first
   const query = new URLSearchParams();
   query.append('clientId', clientId);
   query.append('timestamp', timestamp.toString());
   
-  // Add other query params (for GET requests mainly)
+  // Add other query params (userId, userSecret, etc.)
   Object.keys(queryParams).forEach(key => {
     if (key !== 'clientId' && key !== 'timestamp' && queryParams[key] !== undefined) {
       query.append(key, queryParams[key].toString());
     }
   });
 
-  const url = `${snapTradeConfig.baseUrl}${path}?${query.toString()}`;
+  const queryString = query.toString();
+  
+  // For DELETE requests with authentication, the request data should be empty
+  // but the userId and userSecret are in query params
+  let requestData = {};
+  if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+    requestData = body;
+  }
+  
+  // Generate signature
+  const signature = generateSignature(method, path, queryString, requestData);
+  
+  const url = `${snapTradeConfig.baseUrl}${path}?${queryString}`;
   
   console.log('SnapTrade Request Details:', {
     method,
     path,
     url,
     body: body ? JSON.stringify(body) : null,
+    requestData,
     timestamp,
     clientId,
     signature: signature.substring(0, 20) + '...',
@@ -84,7 +96,7 @@ export async function makeSnapTradeRequest(
     method,
     headers: {
       'Content-Type': 'application/json',
-      'Signature': signature, // Send signature in header instead of query param
+      'Signature': signature,
     },
   };
 
