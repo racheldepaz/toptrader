@@ -13,23 +13,38 @@ export interface User {
 }
 
 export interface Trade {
+  id: string;
+  user: {
     id: string;
-    user: User;
-    symbol: string;
-    companyName?: string;
-    tradeType: 'BUY' | 'SELL';
-    percentage?: number; // profit_loss_percentage
-    timeAgo: string; // derived from executed_at or created_at
-    description?: string; 
-    likes: number;
-    comments: number;
-    userHasLiked: boolean;
-    executedAt: string;
+    username: string;
+    displayName?: string;
+    avatar: string;
+    isPublic: boolean;
+    isDemo: boolean;
     createdAt: string;
-    // Privacy settings
-    showAmounts: boolean;
-    showQuantity: boolean;
-    visibility: 'public' | 'friends' | 'private';
+    updatedAt: string;
+  };
+  symbol: string;
+  companyName?: string;
+  tradeType: 'BUY' | 'SELL';
+  percentage?: number;
+  timeAgo: string;
+  description: string;
+  likes: number;
+  comments: number;
+  userHasLiked: boolean;
+  executedAt: string;
+  createdAt: string;
+  showAmounts: boolean;
+  showQuantity: boolean;
+  visibility: 'public' | 'friends' | 'private';
+  
+  // Additional fields for detailed trade view
+  quantity?: number;
+  price?: number;
+  totalValue?: number;
+  profitLoss?: number;
+  assetType?: string;
 }
 
 export interface TradeComment {
@@ -39,12 +54,15 @@ export interface TradeComment {
     content: string;
     createdAt: string;
     updatedAt: string;
-    user?: {
-        username: string;
-        displayName?: string;
-        avatar?: string;
+    parentCommentId?: string; // For threading support
+    user: {
+      username: string;
+      displayName?: string;
+      avatar: string;
     };
-}
+    replies?: TradeComment[]; // For nested replies
+    replyCount?: number; // Count of direct replies
+  }
 
 export interface TradeLike {
     id: string;
@@ -117,6 +135,45 @@ export const convertDbTradeToUITrade = (dbTrade: TradeWithSocialStats): Trade =>
     };
 };
 
+export const convertDbTradeToUITradeDetailed = (dbTrade: any): Trade => {
+    const userData = Array.isArray(dbTrade.users) ? dbTrade.users[0] : dbTrade.users;
+    
+    return {
+      id: dbTrade.id,
+      user: {
+        id: dbTrade.user_id,
+        username: userData?.username || '',
+        displayName: userData?.display_name,
+        avatar: userData?.display_name?.charAt(0) || userData?.username?.charAt(0) || 'U',
+        isPublic: true,
+        isDemo: false,
+        createdAt: '',
+        updatedAt: ''
+      },
+      symbol: dbTrade.symbol,
+      companyName: dbTrade.company_name,
+      tradeType: dbTrade.trade_type,
+      percentage: dbTrade.profit_loss_percentage,
+      timeAgo: formatTimeAgo(dbTrade.created_at),
+      description: dbTrade.description || '',
+      likes: dbTrade.like_count || 0,
+      comments: dbTrade.comment_count || 0,
+      userHasLiked: dbTrade.is_liked_by_user || false,
+      executedAt: dbTrade.executed_at,
+      createdAt: dbTrade.created_at,
+      showAmounts: dbTrade.show_amounts,
+      showQuantity: dbTrade.show_quantity,
+      visibility: dbTrade.visibility,
+      
+      // Additional detailed fields
+      quantity: dbTrade.quantity,
+      price: dbTrade.price,
+      totalValue: dbTrade.total_value,
+      profitLoss: dbTrade.profit_loss,
+      assetType: dbTrade.asset_type
+    };
+  };
+
 // Helper function to format time ago
 export const formatTimeAgo = (dateString: string): string => {
     const now = new Date();
@@ -124,7 +181,8 @@ export const formatTimeAgo = (dateString: string): string => {
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     
     if (diffInSeconds < 60) return 'just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
-    return `${Math.floor(diffInSeconds / 86400)} days ago`;
-};
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    return `${Math.floor(diffInSeconds / 604800)}w ago`;
+  };

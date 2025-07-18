@@ -1,17 +1,26 @@
+// src/components/EnhancedTradeCard.tsx - Fixed version with no nested links
 import React, { useState, useEffect } from 'react';
 import { Trade, TradeComment } from '@/lib/types';
 import { toggleTradeLike, getTradeComments, addTradeComment, deleteTradeComment } from '@/lib/api/social';
 import { supabase } from '@/lib/supabase';
-import CommentItem from '@/components/CommentItem'; // Adjust path as needed
+import CommentItem from '@/components/CommentItem';
+import ViralShareButton from '@/components/ViralShareButton';
+import { UserAvatar, ClickableUsername } from '@/components/UserAvatar';
 import Link from 'next/link';
-
 
 interface EnhancedTradeCardProps {
     trade: Trade;
     onTradeUpdate?: (updatedTrade: Trade) => void;
+    isDetailed?: boolean;
+    clickable?: boolean; // NEW: Control if card should be clickable
 }
 
-export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTradeCardProps) {
+export default function EnhancedTradeCard({ 
+    trade, 
+    onTradeUpdate, 
+    isDetailed = false,
+    clickable = false // Default to false to avoid nested links
+}: EnhancedTradeCardProps) {
     const [localTrade, setLocalTrade] = useState(trade);
     const [isLiking, setIsLiking] = useState(false);
     const [showComments, setShowComments] = useState(false);
@@ -65,7 +74,6 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
             alert('Unexpected error occurred while liking trade');
         }
         
-        // Add a small delay before allowing another like action
         setTimeout(() => setIsLiking(false), 300);
     };
 
@@ -101,16 +109,14 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
             return;
         }
 
-        // Prevent double submissions
         const commentToAdd = commentInput.trim();
-        setCommentInput(''); // Clear input immediately
+        setCommentInput('');
         setIsAddingComment(true);
         
         try {
             const result = await addTradeComment(localTrade.id, commentToAdd);
             
             if (result.success && result.comment) {
-                // Check if comment already exists (prevent duplicates)
                 const commentExists = comments.some(c => 
                     c.content === result.comment!.content && 
                     c.userId === result.comment!.userId &&
@@ -120,7 +126,6 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
                 if (!commentExists) {
                     setComments(prev => [...prev, result.comment!]);
                     
-                    // Update trade comment count
                     const updatedTrade = {
                         ...localTrade,
                         comments: localTrade.comments + 1
@@ -130,13 +135,11 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
                 }
             } else {
                 console.error('Failed to add comment:', result.error);
-                // Restore the comment input if it failed
                 setCommentInput(commentToAdd);
                 alert(`Failed to add comment: ${result.error}`);
             }
         } catch (error) {
             console.error('Unexpected error adding comment:', error);
-            // Restore the comment input if it failed
             setCommentInput(commentToAdd);
             alert('Unexpected error occurred while adding comment');
         }
@@ -145,12 +148,10 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
     };
 
     const handleDeleteComment = (commentId: string) => {
-        // Remove the comment from local state
         setComments(prevComments => 
             prevComments.filter(comment => comment.id !== commentId)
         );
         
-        // Update the comment count
         const updatedTrade = {
             ...localTrade,
             comments: Math.max(0, localTrade.comments - 1)
@@ -159,23 +160,42 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
         onTradeUpdate?.(updatedTrade);
     };
 
+    const handleCardClick = (e: React.MouseEvent) => {
+        // Prevent card click if clicking on interactive elements
+        const target = e.target as HTMLElement;
+        if (target.closest('button') || target.closest('a') || target.closest('input')) {
+            return;
+        }
+        
+        if (clickable && !isDetailed) {
+            window.location.href = `/trade/${localTrade.id}`;
+        }
+    };
+
     return (
-        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <div 
+            className={`bg-white rounded-lg shadow-sm p-6 border border-gray-200 ${
+                clickable && !isDetailed ? 'cursor-pointer hover:shadow-md transition-shadow duration-200' : ''
+            }`}
+            onClick={handleCardClick}
+        >
             <div className="flex items-start space-x-4">
-                {/* User Avatar */}
-                <Link href={`/user/${localTrade.user.username}`} className="flex-shrink-0">
-                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white font-bold">
-                    {localTrade.user.avatar}
-                </div>
-                </Link>
+                {/* User Avatar - Using UserAvatar component, no direct Link */}
+                <UserAvatar
+                    username={localTrade.user.username}
+                    displayName={localTrade.user.displayName}
+                    avatar={localTrade.user.avatar}
+                    size="md"
+                />
                 
                 <div className="flex-1">
                     {/* User info and timestamp */}
                     <div className="flex items-center space-x-2 mb-2">
-                    <Link href={`/user/${localTrade.user.username}`}className="font-bold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer"
-                     >
-                        @{localTrade.user.username}
-                        </Link>
+                        <ClickableUsername
+                            username={localTrade.user.username}
+                            displayName={localTrade.user.displayName}
+                            className="font-bold text-gray-900"
+                        />
                         <span className="text-gray-500 text-sm">{localTrade.timeAgo}</span>
                     </div>
                     
@@ -191,7 +211,6 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
                                 </span>
                             </div>
                             
-                            {/* Show percentage if it exists (for sells) */}
                             {localTrade.percentage && (
                                 <div className="text-right">
                                     <div className={`text-2xl font-bold ${
@@ -209,25 +228,55 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
                     </div>
                     
                     {/* Interaction buttons */}
-                    <div className="flex items-center space-x-6 text-gray-500">
-                        <button 
-                            onClick={handleLike}
-                            disabled={isLiking}
-                            className={`flex items-center space-x-2 transition-colors ${
-                                localTrade.userHasLiked ? 'text-red-500' : 'hover:text-red-500'
-                            } ${isLiking ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                            <span>{localTrade.userHasLiked ? '❤️' : '🤍'}</span>
-                            <span className="text-sm">{localTrade.likes}</span>
-                        </button>
-                        
-                        <button 
-                            onClick={handleShowComments}
-                            className="flex items-center space-x-2 hover:text-blue-500 transition-colors"
-                        >
-                            <span>💬</span>
-                            <span className="text-sm">{localTrade.comments}</span>
-                        </button>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-6 text-gray-500">
+                            <button 
+                                onClick={handleLike}
+                                disabled={isLiking}
+                                className={`flex items-center space-x-2 transition-colors ${
+                                    localTrade.userHasLiked ? 'text-red-500' : 'hover:text-red-500'
+                                } ${isLiking ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                                <span>{localTrade.userHasLiked ? '❤️' : '🤍'}</span>
+                                <span className="text-sm">{localTrade.likes}</span>
+                            </button>
+                            
+                            <button 
+                                onClick={handleShowComments}
+                                className="flex items-center space-x-2 hover:text-blue-500 transition-colors"
+                            >
+                                <span>💬</span>
+                                <span className="text-sm">{localTrade.comments}</span>
+                            </button>
+
+                            {/* Viral Share Button */}
+                            <ViralShareButton 
+                                trade={{
+                                    id: localTrade.id,
+                                    user: {
+                                        username: localTrade.user.username,
+                                        displayName: localTrade.user.displayName
+                                    },
+                                    symbol: localTrade.symbol,
+                                    companyName: localTrade.companyName,
+                                    tradeType: localTrade.tradeType,
+                                    percentage: localTrade.percentage,
+                                    timeAgo: localTrade.timeAgo
+                                }}
+                                variant="minimal"
+                            />
+                        </div>
+
+                        {/* Conditional View Details Button */}
+                        {!isDetailed && (
+                            <Link 
+                                href={`/trade/${localTrade.id}`}
+                                className="px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors font-medium"
+                                onClick={(e) => e.stopPropagation()} // Prevent card click
+                            >
+                                View Details
+                            </Link>
+                        )}
                     </div>
                     
                     {/* Comments Section */}
@@ -239,7 +288,6 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
                                 </div>
                             ) : (
                                 <>
-                                    {/* Comments List */}
                                     <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
                                         {comments.map((comment) => (
                                             <CommentItem
@@ -256,7 +304,6 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
                                         )}
                                     </div>
 
-                                    {/* Add Comment Section */}
                                     <div className="flex space-x-2">
                                         <input
                                             type="text"
@@ -268,16 +315,20 @@ export default function EnhancedTradeCard({ trade, onTradeUpdate }: EnhancedTrad
                                                     handleAddComment(e as any);
                                                 }
                                             }}
-                                            placeholder={isAuthenticated ? "Add a comment..." : "Sign in to comment"}
+                                            placeholder={isAuthenticated ? 
+                                                "Add a comment..." : 
+                                                "Log in to comment"
+                                            }
                                             disabled={!isAuthenticated || isAddingComment}
-                                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                                         />
+                                        
                                         <button
                                             onClick={handleAddComment}
-                                            disabled={!commentInput.trim() || isAddingComment || !isAuthenticated}
-                                            className="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                            disabled={!isAuthenticated || !commentInput.trim() || isAddingComment}
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
                                         >
-                                            {isAddingComment ? 'Adding...' : 'Post'}
+                                            {isAddingComment ? 'Posting...' : 'Post'}
                                         </button>
                                     </div>
                                 </>
