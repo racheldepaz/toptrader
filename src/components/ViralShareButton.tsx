@@ -26,7 +26,7 @@ const ViralTradeCard: React.FC<ViralTradeCardProps> = ({ trade, isOpen, onClose 
   const [isFlipped, setIsFlipped] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const tradeUrl = `https://toptrader.gg/trade/${trade.id}`;
+  const tradeUrl = `https://toptrader-nine.vercel.app/trade/${trade.id}`;
 
   // Mock chart data generation
   const generateMockChart = () => {
