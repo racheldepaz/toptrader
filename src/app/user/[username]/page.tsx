@@ -1,4 +1,4 @@
-// app/user/[username]/page.tsx
+// src/app/user/[username]/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { Calendar, UserPlus, UserCheck, Users, TrendingUp, Share2, Trophy, Target, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
-import ShareableStatsCard from '@/components/ShareableStatsCard';
+import ViralShareButton from '@/components/ViralShareButton'; // Updated import
 import EditableBioSection from '@/components/EditableBioSection';
 import ProfileTradeHistory from '@/components/ProfileTradeHistory';
 
@@ -44,7 +44,6 @@ export default function UserProfilePage() {
   const [followingCount, setFollowingCount] = useState(0);
   const [stats, setStats] = useState<TradingStats | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('month');
-  const [showShareCard, setShowShareCard] = useState(false);
   const [allStats, setAllStats] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -57,91 +56,88 @@ export default function UserProfilePage() {
   const fetchUserProfile = async () => {
     try {
       // Fetch user profile by username
-      const { data: userProfile, error } = await supabase
+      const { data: userProfile, error: profileError } = await supabase
         .from('users')
         .select('*')
         .eq('username', username)
         .single();
 
-      if (error) {
-        console.error('Error fetching profile:', error);
+      if (profileError) {
+        console.error('Error fetching user profile:', profileError);
+        setLoading(false);
         return;
       }
 
       setProfile(userProfile);
 
-      // Check if current user is following this user
-      if (currentUser && userProfile && currentUser.id !== userProfile.id) {
-        // Check if current user follows profile user
-        const { data: followingData } = await supabase
+      // If current user exists, check follow status
+      if (currentUser && currentUser.id !== userProfile.id) {
+        // Check if current user follows this profile
+        const { data: followData } = await supabase
           .from('friendships')
           .select('*')
-          .eq('requester_id', currentUser.id)
-          .eq('addressee_id', userProfile.id)
-          .eq('status', 'accepted')
-          .single();
+          .or(`and(requester_id.eq.${currentUser.id},addressee_id.eq.${userProfile.id}),and(requester_id.eq.${userProfile.id},addressee_id.eq.${currentUser.id})`)
+          .eq('status', 'accepted');
 
-        // Check if profile user follows current user back
-        const { data: followBackData } = await supabase
-          .from('friendships')
-          .select('*')
-          .eq('requester_id', userProfile.id)
-          .eq('addressee_id', currentUser.id)
-          .eq('status', 'accepted')
-          .single();
-
-        setIsFollowing(!!followingData);
-        setIsFollowingBack(!!followBackData);
+        if (followData && followData.length > 0) {
+          const friendship = followData[0];
+          if (friendship.requester_id === currentUser.id) {
+            setIsFollowing(true);
+          } else {
+            setIsFollowingBack(true);
+          }
+        }
       }
 
-      // Get follower count (people following this user)
+      // Fetch follower and following counts
       const { count: followers } = await supabase
         .from('friendships')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'exact' })
         .eq('addressee_id', userProfile.id)
         .eq('status', 'accepted');
 
-      // Get following count (people this user follows)
       const { count: following } = await supabase
         .from('friendships')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'exact' })
         .eq('requester_id', userProfile.id)
         .eq('status', 'accepted');
 
       setFollowerCount(followers || 0);
       setFollowingCount(following || 0);
 
-      // Fetch trading stats - for now using user_stats table
-      // In production, you might calculate these based on time period
-      const { data: userStats } = await supabase
-        .from('user_stats')
-        .select('*')
-        .eq('user_id', userProfile.id)
-        .single();
+      // Fetch trading stats
+      await fetchTradingStats(userProfile.id);
 
-      if (userStats) {
-        // Store all stats
-        setAllStats(userStats);
-        
-        // Set initial stats for the default period (month)
-        setStats({
-          win_rate: userStats.monthly_win_rate || 0,
-          total_trades: userStats.monthly_trades || 0,
-          best_trade_percentage: userStats.monthly_best_trade || 0,
-          average_gain_percentage: userStats.monthly_average_gain || 0
-        });
-      }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error in fetchUserProfile:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Update stats when period changes
+  const fetchTradingStats = async (userId: string) => {
+    try {
+      const { data: statsData, error } = await supabase
+        .from('user_stats')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching trading stats:', error);
+        return;
+      }
+
+      setAllStats(statsData);
+    } catch (error) {
+      console.error('Error in fetchTradingStats:', error);
+    }
+  };
+
+  // Update stats when selectedPeriod changes
   useEffect(() => {
     if (!allStats) return;
-    
+
     const periodMap = {
       day: {
         win_rate: allStats.daily_win_rate || 0,
@@ -209,10 +205,6 @@ export default function UserProfilePage() {
     }
   };
 
-  const handleShareStats = () => {
-    setShowShareCard(true);
-  };
-
   const handleRefreshStats = async () => {
     if (!profile) return;
     
@@ -224,58 +216,19 @@ export default function UserProfilePage() {
       
       if (error) {
         console.error('Error refreshing stats:', error);
-        alert('Failed to refresh stats');
         return;
       }
-      
-      // Re-fetch the updated stats
-      const { data: updatedStats } = await supabase
-        .from('user_stats')
-        .select('*')
-        .eq('user_id', profile.id)
-        .single();
-      
-      if (updatedStats) {
-        setAllStats(updatedStats);
-        // Update displayed stats for current period
-        const periodMap = {
-          day: {
-            win_rate: updatedStats.daily_win_rate || 0,
-            total_trades: updatedStats.daily_trades || 0,
-            best_trade_percentage: updatedStats.daily_best_trade || 0,
-            average_gain_percentage: updatedStats.daily_average_gain || 0
-          },
-          week: {
-            win_rate: updatedStats.weekly_win_rate || 0,
-            total_trades: updatedStats.weekly_trades || 0,
-            best_trade_percentage: updatedStats.weekly_best_trade || 0,
-            average_gain_percentage: updatedStats.weekly_average_gain || 0
-          },
-          month: {
-            win_rate: updatedStats.monthly_win_rate || 0,
-            total_trades: updatedStats.monthly_trades || 0,
-            best_trade_percentage: updatedStats.monthly_best_trade || 0,
-            average_gain_percentage: updatedStats.monthly_average_gain || 0
-          },
-          year: {
-            win_rate: updatedStats.yearly_win_rate || 0,
-            total_trades: updatedStats.yearly_trades || 0,
-            best_trade_percentage: updatedStats.yearly_best_trade || 0,
-            average_gain_percentage: updatedStats.yearly_average_gain || 0
-          }
-        };
-        
-        setStats(periodMap[selectedPeriod]);
-      }
+
+      // Refetch the updated stats
+      await fetchTradingStats(profile.id);
     } catch (error) {
-      console.error('Error:', error);
-      alert('Failed to refresh stats');
+      console.error('Error in handleRefreshStats:', error);
     } finally {
       setRefreshing(false);
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatJoinDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'long',
       year: 'numeric'
@@ -306,114 +259,105 @@ export default function UserProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-    {/* Profile Header */}
-<div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-  <div className="flex items-start space-x-4">
-    {/* Avatar */}
-    <div className="flex-shrink-0">
-      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold">
-        {profile.display_name?.charAt(0) || profile.username.charAt(0).toUpperCase()}
-      </div>
-    </div>
-
-    {/* Profile Info */}
-    <div className="flex-1 min-w-0">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900 truncate">
-            {profile.display_name || profile.username}
-          </h1>
-          <p className="text-gray-600 text-sm">@{profile.username}</p>
-
-
-          {/* Bio Section */}
-          <div className="mt-2">
-            <EditableBioSection
-              bio={profile.bio}
-              isOwnProfile={currentUser?.id === profile.id}
-              onBioUpdate={(newBio) => {
-                setProfile(prev => prev ? { ...prev, bio: newBio } : null);
-              }}
-            />
-          </div>
-
-          
-          {/* Follower/Following counts */}
-          <div className="mt-3 flex items-center space-x-4">
-            <div className="text-sm">
-              <span className="font-semibold text-gray-900">{followerCount}</span>
-              <span className="text-gray-600 ml-1">followers</span>
-            </div>
-            <div className="text-sm">
-              <span className="font-semibold text-gray-900">{followingCount}</span>
-              <span className="text-gray-600 ml-1">following</span>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Profile Header */}
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <div className="flex items-start space-x-4">
+          {/* Avatar */}
+          <div className="flex-shrink-0">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold">
+              {profile.display_name?.charAt(0) || profile.username.charAt(0).toUpperCase()}
             </div>
           </div>
 
-          <div className="mt-3 flex items-center text-sm text-gray-600">
-            <Calendar className="w-4 h-4 mr-1 flex-shrink-0" />
-            <span>Joined {formatDate(profile.created_at)}</span>
-          </div>
+          {/* Profile Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h1 className="text-2xl font-bold text-gray-900 truncate">
+                  {profile.display_name || profile.username}
+                </h1>
+                <p className="text-gray-600 text-sm">@{profile.username}</p>
 
-          
+                {/* Bio Section */}
+                <div className="mt-2">
+                  <EditableBioSection
+                    bio={profile.bio}
+                    isOwnProfile={currentUser?.id === profile.id}
+                    onBioUpdate={(newBio) => {
+                      setProfile(prev => prev ? { ...prev, bio: newBio } : null);
+                    }}
+                  />
+                </div>
 
-        </div>
-
-        {/* Follow Button */}
-        {currentUser && currentUser.id !== profile.id && (
-          <div className="flex-shrink-0 ml-4">
-            <button
-              onClick={handleFollowToggle}
-              disabled={followLoading}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
-                isFollowing
-                  ? isFollowingBack
-                    ? 'bg-purple-100 hover:bg-purple-200 text-purple-700'
-                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              {isFollowing ? (
-                isFollowingBack ? (
-                  <>
+                {/* Profile Stats */}
+                <div className="flex items-center space-x-6 mt-4 text-sm text-gray-600">
+                  <div className="flex items-center space-x-1">
                     <Users className="w-4 h-4" />
-                    <span>Friends</span>
-                  </>
-                ) : (
-                  <>
-                    <UserCheck className="w-4 h-4" />
-                    <span>Following</span>
-                  </>
-                )
-              ) : (
-                <>
-                  <UserPlus className="w-4 h-4" />
-                  <span>Follow</span>
-                </>
-              )}
-            </button>
+                    <span>{followerCount} followers</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Users className="w-4 h-4" />
+                    <span>{followingCount} following</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Calendar className="w-4 h-4" />
+                    <span>Joined {formatJoinDate(profile.created_at)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center space-x-3">
+                {currentUser && currentUser.id !== profile.id && (
+                  <button
+                    onClick={handleFollowToggle}
+                    disabled={followLoading}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                      isFollowing || isFollowingBack
+                        ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    } ${followLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {isFollowing ? (
+                      <>
+                        <UserCheck className="w-4 h-4" />
+                        <span>Following</span>
+                      </>
+                    ) : isFollowingBack ? (
+                      <>
+                        <UserCheck className="w-4 h-4" />
+                        <span>Follow Back</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-4 h-4" />
+                        <span>Follow</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-        )}
+        </div>
       </div>
-    </div>
-  </div>
-</div>
 
       {/* Trading Stats Section */}
       {stats && (
-        <div className="max-w-4xl mx-auto px-4 py-8">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            {/* Header with Time Period Toggle */}
+        <div className="mt-6 bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-gray-900">Trading Performance</h2>
+              
               <div className="flex items-center space-x-2">
-                {/* Time Period Toggle */}
+                {/* Time Period Selector */}
                 <div className="flex bg-gray-100 rounded-lg p-1">
                   {(['day', 'week', 'month', 'year'] as TimePeriod[]).map((period) => (
                     <button
                       key={period}
                       onClick={() => setSelectedPeriod(period)}
-                      className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                      className={`px-3 py-1 text-sm rounded-md transition-colors ${
                         selectedPeriod === period
                           ? 'bg-white text-gray-900 shadow-sm'
                           : 'text-gray-600 hover:text-gray-900'
@@ -423,14 +367,22 @@ export default function UserProfilePage() {
                     </button>
                   ))}
                 </div>
-                {/* Share Button */}
-                <button
-                  onClick={handleShareStats}
-                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                  title="Share stats"
-                >
-                  <Share2 className="w-5 h-5" />
-                </button>
+                
+                {/* Updated Share Button - Now uses ViralShareButton */}
+                {stats && profile && (
+                  <ViralShareButton
+                    type="profile"
+                    data={{
+                      username: profile.username,
+                      displayName: profile.display_name || profile.username,
+                      stats: stats,
+                      period: selectedPeriod
+                    }}
+                    variant="minimal"
+                    className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  />
+                )}
+                
                 {/* Refresh Button - Only show for own profile */}
                 {currentUser && currentUser.id === profile.id && (
                   <button
@@ -496,8 +448,7 @@ export default function UserProfilePage() {
         </div>
       )}
 
-      {/* Content Section - We'll add more here later */}
-      {/* Trade History Section */}
+      {/* Content Section - Trade History */}
       <div className="space-y-6">
         <ProfileTradeHistory
           userId={profile.id}
@@ -505,17 +456,7 @@ export default function UserProfilePage() {
           username={profile.username}
         />
       </div>
-
-      {/* Shareable Stats Card Modal */}
-      {showShareCard && stats && profile && (
-        <ShareableStatsCard
-          username={profile.username}
-          displayName={profile.display_name || profile.username}
-          stats={stats}
-          period={selectedPeriod}
-          onClose={() => setShowShareCard(false)}
-        />
-      )}
+      </div>
     </div>
   );
 }

@@ -243,22 +243,22 @@ export default function TradePage() {
             <h1 className="text-lg font-semibold text-gray-900">Trade Details</h1>
             
             <div className="flex items-center space-x-2">
-              <ViralShareButton 
-                trade={{
-                  id: trade.id,
-                  user: {
-                    username: trade.user.username,
-                    displayName: trade.user.displayName
-                  },
-                  symbol: trade.symbol,
-                  companyName: trade.companyName,
-                  tradeType: trade.tradeType,
-                  percentage: trade.percentage,
-                  timeAgo: trade.timeAgo
-                }}
-                variant="default"
-                className="text-sm"
-              />
+            <ViralShareButton 
+            type="trade"
+            data={{
+              id: trade.id,
+              user: {
+                username: trade.user.username,
+                displayName: trade.user.displayName
+              },
+              symbol: trade.symbol,
+              companyName: trade.companyName,
+              tradeType: trade.tradeType,
+              percentage: trade.percentage,
+              timeAgo: trade.timeAgo
+            }}
+            variant="default"
+            />
             </div>
           </div>
         </div>

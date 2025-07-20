@@ -251,7 +251,8 @@ export default function EnhancedTradeCard({
 
                             {/* Viral Share Button */}
                             <ViralShareButton 
-                                trade={{
+                                type="trade"
+                                data={{
                                     id: localTrade.id,
                                     user: {
                                         username: localTrade.user.username,
