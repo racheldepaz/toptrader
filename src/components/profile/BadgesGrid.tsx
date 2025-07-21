@@ -77,7 +77,7 @@ export default function BadgesGrid({ badges, className = "" }: BadgesGridProps) 
               <Trophy className="w-5 h-5 text-yellow-500" />
               <h3 className="text-lg font-semibold text-gray-900">Trading Badges</h3>
               <span className="text-sm font-normal text-gray-500">
-                ({earnedBadges.length}/{badges.length})
+                {earnedBadges.length} / {badges.length} earned
               </span>
             </div>
 

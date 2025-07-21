@@ -108,7 +108,7 @@ export default function LevelDisplay({ levelData, className = "" }: LevelDisplay
         </div>
       </div>
 
-      {/* Level Benefits */}
+      {/* Level Benefits 
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Level Benefits</h3>
 
@@ -142,7 +142,7 @@ export default function LevelDisplay({ levelData, className = "" }: LevelDisplay
             </div>
           ))}
         </div>
-      </div>
+      </div> */}
 
       {/* Total XP */}
       <div className="mt-6 pt-4 border-t border-gray-200 text-center">

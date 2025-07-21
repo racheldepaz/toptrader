@@ -42,6 +42,11 @@ export const useSupabaseAuth = () => {
         
         setUser(session?.user ?? null);
         setLoading(false);
+
+        // Award daily login bonus on sign in
+        if (event === 'SIGNED_IN' && session?.user) {
+          awardDailyLoginBonus(session.user.id)
+        }
         
         if (event === 'SIGNED_IN') {
           console.log('🔐 useSupabaseAuth: User signed in, refreshing router');
@@ -109,6 +114,28 @@ export const useSupabaseAuth = () => {
     }
     return { error };
   };
+
+  const awardDailyLoginBonus = async (userId: string) => {
+    try {
+      const { data, error } = await supabase.rpc('award_daily_login_bonus', {
+        p_user_id: userId
+      })
+      
+      if (error) {
+        console.error('Error awarding daily bonus:', error)
+        return
+      }
+      
+      if (data === true) {
+        console.log('🎉 Daily login bonus awarded! (+5 XP)')
+        // Optional: You could trigger a notification here
+      }
+      // If data === false, user already got bonus today (no notification needed)
+      
+    } catch (error) {
+      console.error('Error in awardDailyLoginBonus:', error)
+    }
+  }
 
   return {
     user,

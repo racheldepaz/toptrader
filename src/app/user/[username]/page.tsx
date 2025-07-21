@@ -82,6 +82,7 @@ export default function UserProfilePage() {
   const [badges, setBadges] = useState<Badge[]>([])
   const [brokerageConnections, setBrokerageConnections] = useState<BrokerageConnection[]>([])
 
+
   useEffect(() => {
     if (username) {
       fetchUserProfile()
@@ -156,6 +157,106 @@ export default function UserProfilePage() {
     }
   }
 
+  useEffect(() => {
+    if (!profile?.id) return
+  
+    console.log('🔄 Setting up real-time XP updates for user:', profile.id)
+  
+    // Subscribe to XP changes for this user
+    const xpSubscription = supabase
+      .channel(`xp_updates_${profile.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'user_xp_history',
+        filter: `user_id=eq.${profile.id}`
+      }, (payload) => {
+        console.log('🆕 XP Update received:', payload.new)
+        console.log('🔄 About to refresh level data...')
+        
+        // Refresh level data immediately
+        fetchLevelData(profile.id).then(() => {
+          console.log('✅ Level data refreshed!')
+        })
+        
+        // Show notification for level ups
+        if (payload.new.xp_source === 'level_up') {
+          console.log('🎉 LEVEL UP!', payload.new.description)
+          showLevelUpNotification(payload.new.description)
+        } else {
+          console.log(`💰 +${payload.new.xp_gained} XP: ${payload.new.description}`)
+          showXPGainNotification(payload.new.xp_gained, payload.new.description)
+        }
+      })
+      .subscribe((status) => {
+        console.log('📡 Subscription status:', status)
+      })
+  
+    // Subscribe to user table changes (for direct XP/level updates)
+    const userSubscription = supabase
+      .channel(`user_updates_${profile.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public', 
+        table: 'users',
+        filter: `id=eq.${profile.id}`
+      }, (payload) => {
+        console.log('👤 User data updated:', payload.new)
+        
+        // Check if XP or level changed
+        const oldUser = payload.old as any
+        const newUser = payload.new as any
+        
+        if (newUser.total_xp !== oldUser.total_xp || newUser.current_level !== oldUser.current_level) {
+          console.log('📊 XP/Level changed, refreshing data...')
+          fetchLevelData(profile.id).then(() => {
+            console.log('✅ Level data refreshed from user update!')
+          })
+          
+          // Also refresh badges in case any were earned
+          fetchBadges(profile.id)
+        }
+      })
+      .subscribe((status) => {
+        console.log('📡 User subscription status:', status)
+      })
+  
+    // Cleanup subscriptions
+    return () => {
+      console.log('🧹 Cleaning up XP subscriptions')
+      xpSubscription.unsubscribe()
+      userSubscription.unsubscribe()
+    }
+  }, [profile?.id])
+
+  // 2. Add notification functions (optional but recommended)
+const showLevelUpNotification = (description: string) => {
+  // You can replace this with your preferred notification system
+  // For now, we'll use a simple alert, but you could use toast notifications
+  
+  // Simple browser notification
+  //if ('Notification' in window && Notification.permission === 'granted') {
+  //  new Notification('🎉 Level Up!', {
+   //   body: description,
+  //    icon: '/favicon.ico' // Replace with your app icon
+  //  })
+ // }
+  
+  // Or use a toast library like react-hot-toast:
+  // toast.success(`🎉 ${description}`, { duration: 5000 })
+  
+  // Or just console for now
+  console.log('🎉 LEVEL UP NOTIFICATION:', description)
+}
+
+const showXPGainNotification = (xpGained: number, description: string) => {
+  // Subtle XP gain notification
+  console.log(`💰 +${xpGained} XP: ${description}`)
+  
+  // You could show a floating +XP animation here
+  // Or use a toast: toast(`+${xpGained} XP`, { icon: '💰' })
+}
+
   const fetchTradingStats = async (userId: string) => {
     try {
       const { data: statsData, error } = await supabase.from("user_stats").select("*").eq("user_id", userId).single()
@@ -171,34 +272,50 @@ export default function UserProfilePage() {
     }
   }
 
-  // New data fetching functions for integrated components
+  // New data fetching functions for integrated components: levels
   const fetchLevelData = async (userId: string) => {
     try {
-      // TODO: Replace with real API call to fetch user level data
-      // For now, calculate based on trading stats
-      const totalTrades = allStats?.monthly_trades || 0
-      const winRate = allStats?.monthly_win_rate || 0
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('total_xp, current_level')
+        .eq('id', userId)
+        .single()
+  
+      if (error) {
+        console.error("Error fetching level data:", error)
+        return
+      }
+  
+      const totalXP = user?.total_xp || 0
+      const currentLevel = user?.current_level || 1
       
-      // Simple XP calculation based on trading activity
-      const baseXP = totalTrades * 10
-      const winBonus = Math.floor(winRate * 5)
-      const totalXP = baseXP + winBonus
+      // Calculate XP progress within current level
+      const baseXP = 250
+      const multiplier = 1.1
       
-      const currentLevel = Math.max(1, Math.floor(totalXP / 250) + 1)
-      const currentXP = totalXP % 250
-      const nextLevelXP = 250
-      
-      const levelNames = {
-        1: "Rookie Trader",
-        5: "Active Trader", 
-        10: "Skilled Trader",
-        15: "Expert Trader",
-        20: "Master Trader",
-        25: "Elite Trader",
-        30: "Legendary Trader"
+      // Calculate how much XP is needed for this level
+      let xpForThisLevel = baseXP
+      for (let i = 2; i <= currentLevel; i++) {
+        xpForThisLevel = Math.floor(baseXP * Math.pow(multiplier, i - 2))
       }
       
-      // Find appropriate level name
+      // Calculate XP for next level
+      const xpForNextLevel = Math.floor(baseXP * Math.pow(multiplier, currentLevel - 1))
+      
+      // Calculate current XP within this level
+      let totalXPForPreviousLevels = 0
+      for (let i = 2; i <= currentLevel; i++) {
+        totalXPForPreviousLevels += Math.floor(baseXP * Math.pow(multiplier, i - 2))
+      }
+      
+      const currentXP = Math.max(0, totalXP - totalXPForPreviousLevels)
+      
+      // Get level name
+      const levelNames = {
+        1: "Rookie Trader", 5: "Active Trader", 10: "Skilled Trader",
+        15: "Expert Trader", 20: "Master Trader", 25: "Elite Trader", 30: "Legendary Trader"
+      }
+      
       let levelName = "Rookie Trader"
       const levelKeys = Object.keys(levelNames).map(Number).sort((a, b) => b - a)
       for (const level of levelKeys) {
@@ -207,119 +324,173 @@ export default function UserProfilePage() {
           break
         }
       }
-
+  
       setLevelData({
         currentLevel,
         levelName,
         currentXP,
-        nextLevelXP,
+        nextLevelXP: xpForNextLevel,
         totalXP
       })
     } catch (error) {
-      console.error("Error fetching level data:", error)
+      console.error("Error in fetchLevelData:", error)
     }
   }
 
+  //New data fetching functions for integrated components: badges
   const fetchBadges = async (userId: string) => {
     try {
-      // TODO: Replace with real API call to fetch user badges
-      // For now, generate based on user activity and stats
-      const defaultBadges: Badge[] = [
-        {
-          id: "first_trade",
-          name: "First Trade",
-          icon: "🎯",
-          earned: (allStats?.total_trades || 0) > 0,
-          earnedDate: allStats?.total_trades > 0 ? "2024-01-15" : undefined,
-          description: "Completed your first trade on the platform",
-          category: "trading",
-          rarity: "common",
-        },
-        {
-          id: "social_butterfly",
-          name: "Social Butterfly",
-          icon: "🦋",
-          earned: followerCount >= 10,
-          earnedDate: followerCount >= 10 ? "2024-02-20" : undefined,
-          description: "Gained 10 followers",
-          category: "social",
-          rarity: "rare",
-        },
-        {
-          id: "winning_streak",
-          name: "5 Win Streak",
-          icon: "🔥", 
-          earned: (allStats?.monthly_win_rate || 0) >= 80,
-          earnedDate: (allStats?.monthly_win_rate || 0) >= 80 ? "2024-02-15" : undefined,
-          description: "Achieved 80%+ win rate this month",
-          category: "trading",
-          rarity: "rare",
-        },
-        {
-          id: "portfolio_milestone",
-          name: "Active Trader",
-          icon: "💎",
-          earned: (allStats?.monthly_trades || 0) >= 10,
-          earnedDate: (allStats?.monthly_trades || 0) >= 10 ? "2024-03-01" : undefined,
-          description: "Completed 10+ trades this month",
-          category: "achievement",
-          rarity: "epic",
-        },
-        {
-          id: "day_trader",
-          name: "Day Trader",
-          icon: "⚡",
-          earned: false,
-          description: "Complete 10 trades in a single day",
-          category: "trading",
-          rarity: "rare",
-        },
-        {
-          id: "master_trader",
-          name: "Master Trader",
-          icon: "👑",
-          earned: levelData ? levelData.currentLevel >= 20 : false,
-          description: "Reach Level 20",
-          category: "achievement",
-          rarity: "legendary",
-        },
-      ]
-
-      setBadges(defaultBadges)
+      // First, ensure badge definitions exist in database
+      await ensureBadgeDefinitions()
+      
+      // Get all badge definitions
+      const { data: allBadges, error: badgeError } = await supabase
+        .from('badge_definitions')
+        .select('*')
+        .order('id')
+  
+      if (badgeError) {
+        console.error("Error fetching badge definitions:", badgeError)
+        return
+      }
+  
+      // Get user's earned badges
+      const { data: userBadges, error: userBadgeError } = await supabase
+        .from('user_badges')
+        .select('badge_id, earned_at')
+        .eq('user_id', userId)
+  
+      if (userBadgeError) {
+        console.error("Error fetching user badges:", userBadgeError)
+        // Continue with empty user badges instead of failing
+      }
+  
+      // Combine the data
+      const badges: Badge[] = (allBadges || []).map(badge => {
+        const userBadge = (userBadges || []).find(ub => ub.badge_id === badge.id)
+        return {
+          id: badge.id,
+          name: badge.name,
+          icon: badge.icon,
+          description: badge.description,
+          category: badge.category,
+          rarity: badge.rarity,
+          earned: !!userBadge,
+          earnedDate: userBadge?.earned_at 
+            ? new Date(userBadge.earned_at).toLocaleDateString() 
+            : undefined
+        }
+      })
+  
+      console.log('📋 Fetched badges:', badges.length, 'total,', badges.filter(b => b.earned).length, 'earned')
+      setBadges(badges)
     } catch (error) {
       console.error("Error fetching badges:", error)
+      // Set empty badges instead of failing completely
+      setBadges([])
+    }
+  }
+  
+  // Helper function to ensure badge definitions exist
+  const ensureBadgeDefinitions = async () => {
+    try {
+      const { data: existingBadges, error } = await supabase
+        .from('badge_definitions')
+        .select('id')
+        .limit(1)
+  
+      if (error) {
+        console.log("Badge definitions table might not exist, creating badges...")
+      }
+  
+      if (!existingBadges || existingBadges.length === 0) {
+        console.log("Inserting default badge definitions...")
+        
+        // Insert default badge definitions
+        const defaultBadges = [
+          {
+            id: 'first_trade',
+            name: 'First Trade',
+            icon: '🎯',
+            description: 'Completed your first trade on the platform',
+            category: 'trading',
+            rarity: 'common'
+          },
+          {
+            id: 'social_butterfly',
+            name: 'Social Butterfly',
+            icon: '🦋',
+            description: 'Gained 10 followers',
+            category: 'social',
+            rarity: 'rare'
+          },
+          {
+            id: 'winning_streak',
+            name: '5 Win Streak',
+            icon: '🔥',
+            description: 'Achieved 5 winning trades in a row',
+            category: 'trading',
+            rarity: 'rare'
+          },
+          {
+            id: 'portfolio_milestone',
+            name: 'Active Trader',
+            icon: '💎',
+            description: 'Completed 10+ trades this month',
+            category: 'achievement',
+            rarity: 'epic'
+          },
+          {
+            id: 'day_trader',
+            name: 'Day Trader',
+            icon: '⚡',
+            description: 'Complete 10 trades in a single day',
+            category: 'trading',
+            rarity: 'rare'
+          },
+          {
+            id: 'master_trader',
+            name: 'Master Trader',
+            icon: '👑',
+            description: 'Reach Level 20',
+            category: 'achievement',
+            rarity: 'legendary'
+          }
+        ]
+  
+        const { error: insertError } = await supabase
+          .from('badge_definitions')
+          .insert(defaultBadges)
+  
+        if (insertError) {
+          console.error("Error inserting badge definitions:", insertError)
+        } else {
+          console.log("✅ Badge definitions created successfully")
+        }
+      }
+    } catch (error) {
+      console.error("Error in ensureBadgeDefinitions:", error)
     }
   }
 
   const fetchBrokerageConnections = async (userId: string) => {
     try {
-      // TODO: Replace with real API call to fetch brokerage connections
-      // For now, return empty array for non-own profiles
       if (!isOwnProfile) {
         setBrokerageConnections([])
         return
       }
-
-      // Mock data for own profile - replace with real data
-      const mockConnections: BrokerageConnection[] = [
-        {
-          id: 1,
-          name: "Robinhood",
-          status: "connected",
-          lastSync: "2 minutes ago",
-          accountValue: 25430.5,
-          logo: "🤖",
-        },
-        {
-          id: 2,
-          name: "E*TRADE",
-          status: "connected", 
-          lastSync: "5 minutes ago",
-          accountValue: 19800.0,
-          logo: "📊",
-        },
-      ]
-
+  
+      // For now, keep mock data until you implement SnapTrade integration
+      // You can replace this with real SnapTrade data later
+      const mockConnections: BrokerageConnection[] = []
+      
+      // TODO: Replace with real SnapTrade API call
+      // const { data: connections, error } = await supabase
+      //   .from('brokerage_connections')
+      //   .select('*')
+      //   .eq('user_id', userId)
+      //   .order('created_at', { ascending: false })
+  
       setBrokerageConnections(mockConnections)
     } catch (error) {
       console.error("Error fetching brokerage connections:", error)
@@ -618,7 +789,7 @@ export default function UserProfilePage() {
                           </button>
                         ))}
                       </div>
-
+                        
                       {/* Share Button */}
                       {stats && profile && (
                         <ViralShareButton
