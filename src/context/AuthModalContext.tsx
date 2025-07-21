@@ -2,7 +2,8 @@
 
 import { createContext, useState, useContext, ReactNode } from 'react';
 
-export type SignupStep = 'email' | 'verify' | 'password' | 'profile' | 'brokerage';
+export type SignupStep = 'email' | 'verify' | 'password' | 'profile' | 'brokerage' | 'connecting' | 'complete';
+
 
 interface AuthModalContextType {
   isLoginModalOpen: boolean;

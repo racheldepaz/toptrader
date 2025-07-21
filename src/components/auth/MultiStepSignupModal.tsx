@@ -5,7 +5,7 @@ import { useAuthModal, SignupStep } from '@/context/AuthModalContext';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
 import { supabase } from '@/lib/supabase';
 import { useUserProfileQuery } from '@/hooks/useUserProfileQuery';
-
+import { useSnapTrade } from '@/hooks/useSnapTrade';
 
 interface MultiStepSignupModalProps {
   isOpen: boolean;
@@ -23,6 +23,74 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
     resetSignupFlow 
   } = useAuthModal();
   
+  const { 
+    loading: snapTradeLoading, 
+    error: snapTradeError, 
+    snapTradeUser,
+    initializeSnapTradeFlow,  // ✅ Add this back
+    clearError 
+  } = useSnapTrade();
+
+  const handleBrokerageConnection = async () => {
+    clearError();
+    
+    console.log('🎯 handleBrokerageConnection: Starting...');
+    
+    const connectionUrl = await initializeSnapTradeFlow('/dashboard');
+    console.log('🎯 Generated URL:', connectionUrl);
+    
+    if (connectionUrl) {
+      // Open the connection portal in a new tab
+      const popup = window.open(connectionUrl, '_blank', 'width=800,height=600');
+      
+      // Move to a "connecting" state to show loading
+      setSignupStep('connecting');
+      
+      // Set up listener for when user completes connection
+      const checkConnection = setInterval(async () => {
+        try {
+          // Check if popup is closed (user finished or cancelled)
+          if (popup?.closed) {
+            clearInterval(checkConnection);
+            
+            // Check if user actually connected an account
+            const response = await fetch('/api/snaptrade/accounts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: snapTradeUser?.userId,
+                userSecret: snapTradeUser?.userSecret
+              })
+            });
+            
+            const accounts = await response.json();
+            
+            if (response.ok && accounts.length > 0) {
+              // Success! User connected an account
+              setSignupStep('complete');
+            } else {
+              // User closed popup without connecting
+              setSignupStep('brokerage'); // Go back to brokerage step
+            }
+          }
+        } catch (error) {
+          console.error('Error checking connection:', error);
+          clearInterval(checkConnection);
+          setSignupStep('brokerage'); // Go back on error
+        }
+      }, 1000); // Check every second
+      
+      // Cleanup after 5 minutes
+      setTimeout(() => {
+        clearInterval(checkConnection);
+        if (!popup?.closed) {
+          setSignupStep('brokerage');
+        }
+      }, 300000);
+    }
+  };
+
+
   const { user } = useSupabaseAuth();
 
   const { updateProfileCache, refreshProfile } = useUserProfileQuery();
@@ -78,6 +146,8 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
       setSignupStep('password');
     }
   }, [user, signupStep, setSignupStep]);
+
+  
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,6 +283,8 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
   
       console.log('👤 handleProfileSubmit: Profile creation response:', { data, error: profileError });
   
+
+
       if (profileError) {
         console.log('❌ handleProfileSubmit: Profile creation error:', profileError);
         setError(profileError.message);
@@ -313,16 +385,18 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
     return null;
   }
 
-const getStepNumber = () => {
-  switch (signupStep) {
-    case 'email': return 1; // Not shown (no progress bar on email step)
-    case 'verify': return 1; // "Step 1 of 4"
-    case 'password': return 2; // "Step 2 of 4" 
-    case 'profile': return 3; // "Step 3 of 4"
-    case 'brokerage': return 4; // "Step 4 of 4"
-    default: return 1;
-  }
-};
+  const getStepNumber = () => {
+    switch (signupStep) {
+      case 'email': return 1;
+      case 'verify': return 1;
+      case 'password': return 2;
+      case 'profile': return 3;
+      case 'brokerage': return 4;
+      case 'connecting': return 4; // Same as brokerage
+      case 'complete': return 4;   // Show complete
+      default: return 1;
+    }
+  };
 
 
   console.log('🎨 Rendering modal for step:', signupStep, 'Step number:', getStepNumber());
@@ -333,13 +407,15 @@ const getStepNumber = () => {
         
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">
-            {signupStep === 'email' && 'Join the community'}
-            {signupStep === 'verify' && 'Check your inbox! 📧'}
-            {signupStep === 'password' && 'Secure your account'}
-            {signupStep === 'profile' && 'Set up your profile'}
-            {signupStep === 'brokerage' && 'Connect your brokerage'}
-          </h2>
+        <h2 className="text-2xl font-bold">
+        {signupStep === 'email' && 'Join the community'}
+        {signupStep === 'verify' && 'Check your inbox! 📧'}
+        {signupStep === 'password' && 'Secure your account'}
+        {signupStep === 'profile' && 'Set up your profile'}
+        {signupStep === 'brokerage' && 'Connect your brokerage'}
+        {signupStep === 'connecting' && 'Connect your brokerage'}
+        {signupStep === 'complete' && 'Welcome to TopTrader!'}
+        </h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
         </div>
 
@@ -370,7 +446,7 @@ const getStepNumber = () => {
           <div>
             <p className="text-gray-600 mb-6 text-center">Share trades, climb leaderboards, learn from the best</p>
             
-            {/* Google Auth Button (disabled for now) */}
+            {/* Google Auth Button*/}
             <button 
               onClick={handleGoogleSignup}
               className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 mb-4 transition-colors shadow-sm"
@@ -578,68 +654,139 @@ const getStepNumber = () => {
           </div>
         )}
 
+        {/* Brokerage Connection Step */}
         {signupStep === 'brokerage' && (
-          <div>
-            <p className="text-gray-600 mb-6 text-center">Link your trading account to start sharing your moves</p>
-            
-            <div className="mb-6 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center">
-              <svg className="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span className="text-sm text-green-700">Read-only access • Your credentials stay safe</span>
+          <div className="space-y-4">
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-gray-900">Connect Your Brokerage</h3>
+              <p className="text-sm text-gray-600 mt-2">
+                Connect your trading account to start sharing your trades and competing with friends.
+              </p>
             </div>
 
-            <div className="space-y-3 mb-6">
-              <div className="border border-gray-200 rounded-lg p-4 flex items-center justify-between bg-gray-50">
-                <div className="flex items-center">
-                  <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center mr-3">
-                    <span className="text-white font-bold text-xs">TD</span>
-                  </div>
-                  <div>
-                    <div className="font-medium text-gray-900">TD Ameritrade</div>
-                    <div className="text-sm text-gray-500">Connect your TD account securely with SnapTrade</div>
-                  </div>
-                </div>
+            {snapTradeError && (
+              <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                <p className="text-sm text-red-600">{snapTradeError}</p>
               </div>
-
-              <div className="border border-gray-200 rounded-lg p-4 flex items-center justify-between bg-gray-50">
-                <div className="flex items-center">
-                  <div className="w-8 h-8 bg-green-500 rounded flex items-center justify-center mr-3">
-                    <span className="text-white font-bold text-xs">HOOD</span>
-                  </div>
-                  <div>
-                    <div className="font-medium text-gray-900">Robinhood</div>
-                    <div className="text-sm text-gray-500">Connect your Robinhood account securely</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="text-center text-sm text-blue-600 py-2">
-                + 12 more brokerages supported
-              </div>
-            </div>
+            )}
 
             <div className="space-y-3">
-              <button 
-                disabled
-                className="w-full bg-gray-300 text-gray-500 py-3 px-4 rounded-md cursor-not-allowed"
+              <button
+                onClick={handleBrokerageConnection}
+                disabled={snapTradeLoading}
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                Connect Brokerage
+        {snapTradeLoading ? (
+          <div className="flex items-center">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+            Setting up connection...
+          </div>
+        ) : (
+          'Connect Brokerage Account'
+        )}
               </button>
-              
-              <button 
-                onClick={handleSkipBrokerage}
-                className="w-full bg-white text-gray-600 py-3 px-4 rounded-md border border-gray-300 hover:bg-gray-50 transition-colors"
+
+              <button
+                onClick={() => {
+                  // Skip brokerage connection for now
+                  setSignupStep('complete');
+        }}
+                className="w-full py-2 px-4 text-sm text-gray-600 hover:text-gray-800"
               >
-                Skip for now
+                Skip for now (you can connect later)
               </button>
             </div>
-
-            <p className="mt-3 text-xs text-gray-500 text-center">
-              You can always connect your brokerage later
-            </p>
           </div>
         )}
+
+        {/* Connecting Step */}
+{signupStep === 'connecting' && (
+  <div className="text-center space-y-6">
+    <div className="text-center">
+      <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+      <h3 className="text-lg font-medium text-gray-900 mb-2">Connecting Your Account</h3>
+      <p className="text-sm text-gray-600">
+        Complete the setup in the other tab, then come back here.
+      </p>
+    </div>
+
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="flex items-start space-x-3">
+        <div className="flex-shrink-0">
+          <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+          </svg>
+        </div>
+        <div className="text-sm text-blue-800">
+          <p className="font-medium mb-1">Instructions:</p>
+          <ol className="list-decimal list-inside space-y-1">
+            <li>Select your brokerage (Robinhood, etc.)</li>
+            <li>Log in with your brokerage credentials</li>
+            <li>Grant permission to connect</li>
+            <li>Return to this tab when done</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <button
+      onClick={() => setSignupStep('brokerage')}
+      className="text-sm text-gray-600 hover:text-gray-800"
+    >
+      Cancel and go back
+    </button>
+
+    <div className="flex items-center justify-center space-x-1 text-gray-400">
+      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+    </div>
+    <p className="text-sm text-gray-500">Waiting for connection...</p>
+  </div>
+)}
+
+{/* Complete Step */}
+{signupStep === 'complete' && (
+  <div className="text-center space-y-6">
+    <div className="text-center">
+      <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+        <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+      <h3 className="text-lg font-medium text-gray-900 mb-2">All Set! 🎉</h3>
+      <p className="text-sm text-gray-600">
+        Your brokerage account is connected and you're ready to start trading socially.
+      </p>
+    </div>
+
+    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+      <div className="text-sm text-green-800">
+        <p className="font-medium mb-2">What's next:</p>
+        <ul className="space-y-1">
+          <li>• Share your trades with the community</li>
+          <li>• Climb the leaderboards</li>
+          <li>• Learn from top traders</li>
+          <li>• Compete with friends</li>
+        </ul>
+      </div>
+    </div>
+
+    <button
+      onClick={() => {
+        onClose();
+        resetSignupFlow();
+        // Optionally redirect to dashboard
+        window.location.href = '/dashboard';
+      }}
+      className="w-full bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition-colors font-medium"
+    >
+      Get Started Trading!
+    </button>
+  </div>
+)}
       </div>
     </div>
   );
