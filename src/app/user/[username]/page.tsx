@@ -472,26 +472,45 @@ const showXPGainNotification = (xpGained: number, description: string) => {
   }
 
   const fetchBrokerageConnections = async (userId: string) => {
+    console.log('🔗 fetchBrokerageConnections called with userId:', userId)
+    console.log('🔗 isOwnProfile:', isOwnProfile)
+    
     try {
       if (!isOwnProfile) {
+        console.log('🔗 Not own profile, setting empty connections')
         setBrokerageConnections([])
         return
       }
   
-      // For now, keep mock data until you implement SnapTrade integration
-      // You can replace this with real SnapTrade data later
-      const mockConnections: BrokerageConnection[] = []
-      
-      // TODO: Replace with real SnapTrade API call
-      // const { data: connections, error } = await supabase
-      //   .from('brokerage_connections')
-      //   .select('*')
-      //   .eq('user_id', userId)
-      //   .order('created_at', { ascending: false })
+      console.log('🔗 Calling get_user_brokerage_connections RPC...')
   
-      setBrokerageConnections(mockConnections)
+      // Get real brokerage connections from database
+      const { data: connections, error } = await supabase
+        .rpc('get_user_brokerage_connections', { p_user_id: userId })
+  
+      console.log('🔗 RPC Response:', { connections, error })
+  
+      if (error) {
+        console.error("Error fetching brokerage connections:", error)
+        setBrokerageConnections([])
+        return
+      }
+  
+      // Convert database format to component format
+      const formattedConnections: BrokerageConnection[] = (connections || []).map(conn => ({
+        id: conn.id,
+        name: conn.name,
+        status: conn.status as "connected" | "disconnected" | "syncing",
+        lastSync: conn.last_sync,
+        accountValue: parseFloat(conn.account_value.toString()) || 0,
+        logo: conn.logo
+      }))
+  
+      console.log('🔗 Formatted connections:', formattedConnections)
+      setBrokerageConnections(formattedConnections)
     } catch (error) {
       console.error("Error fetching brokerage connections:", error)
+      setBrokerageConnections([])
     }
   }
 
@@ -753,8 +772,13 @@ const showXPGainNotification = (xpGained: number, description: string) => {
 
           {/* Right Column - Main Content */}
           <div className="lg:col-span-2 space-y-6">
+            
+
+            
             {/* Brokerage Connections - Only show for own profile */}
-            {isOwnProfile && brokerageConnections.length > 0 && (
+            
+            
+            {isOwnProfile && (
               <BrokerageConnectionPanel
                 connections={brokerageConnections}
                 onConnect={handleConnectBrokerage}

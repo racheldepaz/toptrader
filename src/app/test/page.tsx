@@ -66,6 +66,13 @@ export default function SnapTradeTestPage() {
       loading: false
     },
     {
+      id: 2.5, // Insert between step 2 and 3
+      title: "Sync All Data",
+      description: "Fetch and store all connections and accounts from SnapTrade",
+      completed: false,
+      loading: false
+    },
+    {
       id: 3,
       title: "Connect Brokerage Account",
       description: "Generate connection portal URL for account linking",
@@ -115,6 +122,9 @@ export default function SnapTradeTestPage() {
     ));
   };
 
+  const syncStep = steps.find(s => s.id === 2.5);
+
+
   const resetAllSteps = () => {
     setSteps(prev => prev.map(step => ({
       ...step,
@@ -133,6 +143,225 @@ export default function SnapTradeTestPage() {
     setAllUsers([]);
   };
 
+  const recoverExistingUser = async () => {
+    if (!user) {
+      alert('Please log in first');
+      return;
+    }
+  
+    // Check if user has old SnapTrade credentials stored somewhere
+    try {
+      // First, check if we have the user in our old system
+      const { data: oldUserData, error } = await supabase
+        .from('users')
+        .select('snaptrade_user_id, snaptrade_user_secret')
+        .eq('id', user.id)
+        .single();
+  
+      if (!error && oldUserData?.snaptrade_user_id) {
+        console.log('Found existing SnapTrade credentials in old format');
+        
+        const existingUser = {
+          userId: oldUserData.snaptrade_user_id,
+          userSecret: oldUserData.snaptrade_user_secret
+        };
+        
+        setSnapTradeUser(existingUser);
+        
+        // Now migrate to new schema
+        try {
+          const { data: storeResult, error: storeError } = await supabase
+            .rpc('create_snaptrade_user', {
+              p_user_id: user.id,
+              p_snaptrade_user_id: existingUser.userId,
+              p_snaptrade_user_secret: existingUser.userSecret
+            });
+  
+          if (storeError) {
+            console.error('Error storing in new schema:', storeError);
+          } else {
+            console.log('✅ Migrated existing user to new schema');
+            alert('✅ Found and migrated your existing SnapTrade user!');
+            updateStep(2, { completed: true, data: { migrated: true } });
+          }
+        } catch (dbError) {
+          console.error('Database migration error:', dbError);
+        }
+        
+      } else {
+        // No old data found, ask user for manual input
+        const existingUserId = prompt(
+          'Enter your existing SnapTrade User ID:\n\n' +
+          '(You can find this in your old system or SnapTrade dashboard)'
+        );
+        
+        if (!existingUserId) return;
+        
+        const existingSecret = prompt(
+          'Enter your SnapTrade User Secret:\n\n' +
+          '(This was provided when you first created the SnapTrade user)'
+        );
+        
+        if (!existingSecret) return;
+        
+        // Test the credentials
+        try {
+          const testResponse = await fetch('/api/snaptrade/accounts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: existingUserId,
+              userSecret: existingSecret
+            })
+          });
+          
+          if (testResponse.ok) {
+            // Credentials work, store them
+            setSnapTradeUser({
+              userId: existingUserId,
+              userSecret: existingSecret
+            });
+            
+            // Store in new database schema
+            const { error: storeError } = await supabase
+              .rpc('create_snaptrade_user', {
+                p_user_id: user.id,
+                p_snaptrade_user_id: existingUserId,
+                p_snaptrade_user_secret: existingSecret
+              });
+            
+            if (storeError) {
+              console.error('Error storing credentials:', storeError);
+            }
+            
+            alert('✅ Successfully recovered your existing SnapTrade user!');
+            updateStep(2, { completed: true, data: { recovered: true } });
+          } else {
+            alert('❌ Invalid credentials. Please check your SnapTrade User ID and Secret.');
+          }
+        } catch (testError) {
+          console.error('Error testing credentials:', testError);
+          alert('❌ Error testing credentials. Please try again.');
+        }
+      }
+    } catch (error) {
+      console.error('Error recovering user:', error);
+      alert('❌ Error recovering existing user: ' + (error as Error).message);
+    }
+  };
+
+  const syncAllConnectionsAndAccounts = async () => {
+    if (!snapTradeUser) {
+      alert('Please create or recover a SnapTrade user first');
+      return;
+    }
+  
+    try {
+      console.log('🔄 Starting full sync of connections and accounts...');
+  
+      // Step 1: Get all connections from SnapTrade
+      const connectionsResponse = await fetch('/api/snaptrade/list-connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: snapTradeUser.userId,
+          userSecret: snapTradeUser.userSecret
+        })
+      });
+  
+      if (!connectionsResponse.ok) {
+        throw new Error('Failed to fetch connections from SnapTrade');
+      }
+  
+      const connections = await connectionsResponse.json();
+      console.log('📋 Found connections:', connections);
+  
+      // Step 2: Store each connection in database
+      for (const connection of connections) {
+        try {
+          console.log('💾 Storing connection:', connection.id);
+          
+          const { error: storeError } = await supabase
+            .rpc('store_snaptrade_connection', {
+              p_snaptrade_user_id: snapTradeUser.userId,
+              p_connection_data: connection
+            });
+  
+          if (storeError) {
+            console.error('Error storing connection:', storeError);
+          } else {
+            console.log('✅ Stored connection:', connection.id);
+          }
+        } catch (error) {
+          console.error('Error processing connection:', connection.id, error);
+        }
+      }
+  
+      // Step 3: Get and store all accounts for each connection
+      const allAccounts = [];
+      
+      for (const connection of connections) {
+        try {
+          console.log('📊 Fetching accounts for connection:', connection.id);
+          
+          // Get accounts for this connection
+          const accountsResponse = await fetch('/api/snaptrade/accounts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: snapTradeUser.userId,
+              userSecret: snapTradeUser.userSecret
+            })
+          });
+  
+          if (accountsResponse.ok) {
+            const accounts = await accountsResponse.json();
+            
+            // Store account details for each account
+            for (const account of accounts) {
+              try {
+                console.log('💾 Getting details for account:', account.id);
+                
+                // Get detailed account info
+                const detailsResponse = await fetch('/api/snaptrade/account-details', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    userId: snapTradeUser.userId,
+                    userSecret: snapTradeUser.userSecret,
+                    accountId: account.id,
+                    topTraderUserId: user?.id  // Important: use TopTrader user ID
+                  })
+                });
+  
+                if (detailsResponse.ok) {
+                  const accountDetails = await detailsResponse.json();
+                  console.log('✅ Stored account details:', account.id);
+                  allAccounts.push(accountDetails);
+                } else {
+                  console.error('Failed to get details for account:', account.id);
+                }
+              } catch (error) {
+                console.error('Error processing account:', account.id, error);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching accounts for connection:', connection.id, error);
+        }
+      }
+  
+      console.log('🎉 Sync completed!');
+      alert(`✅ Sync completed!\n\nStored:\n- ${connections.length} connections\n- ${allAccounts.length} accounts`);
+      
+      // Refresh the accounts list in the UI
+      await listConnectedAccounts();
+      
+    } catch (error) {
+      console.error('Error in full sync:', error);
+      alert('❌ Error during sync: ' + (error as Error).message);
+    }
+  };
 
   // Step 1: Initialize Client & Test API
   const testApiConnection = async () => {
@@ -340,7 +569,8 @@ export default function SnapTradeTestPage() {
         body: JSON.stringify({
           userId: snapTradeUser.userId,
           userSecret: snapTradeUser.userSecret,
-          accountId: selectedAccount
+          accountId: selectedAccount,
+          topTraderUserId: user?.id
         })
       });
 
@@ -364,6 +594,27 @@ export default function SnapTradeTestPage() {
         loading: false, 
         error: 'Network error: ' + (error as Error).message 
       });
+    }
+  };
+
+  const getStoredAccountDetails = async () => {
+    if (!user) {
+      console.error('No user logged in');
+      return;
+    }
+  
+    try {
+      const response = await fetch(`/api/snaptrade/account-details?userId=${user.id}`);
+      const data = await response.json();
+  
+      if (response.ok) {
+        console.log('📊 Stored account details:', data);
+        alert(`Found ${data.totalAccounts} stored accounts with total balance: $${data.totalBalance}`);
+      } else {
+        console.error('Failed to fetch stored accounts:', data.error);
+      }
+    } catch (error) {
+      console.error('Error fetching stored accounts:', error);
     }
   };
 
@@ -543,6 +794,59 @@ export default function SnapTradeTestPage() {
     }
   };
 
+  const checkDatabaseData = async () => {
+    if (!user) return;
+  
+    try {
+      console.log('🔍 Checking database data...');
+  
+      // Check snaptrade_users
+      const { data: snapTradeUsers, error: usersError } = await supabase
+        .from('snaptrade_users')
+        .select('*')
+        .eq('user_id', user.id);
+  
+      console.log('👤 SnapTrade Users:', snapTradeUsers);
+  
+      if (snapTradeUsers && snapTradeUsers.length > 0) {
+        const snapTradeUserId = snapTradeUsers[0].snaptrade_user_id;
+  
+        // Check connections
+        const { data: connections, error: connError } = await supabase
+          .from('snaptrade_connections')
+          .select('*')
+          .eq('snaptrade_user_id', snapTradeUserId);
+  
+        console.log('🔗 Connections:', connections);
+  
+        // Check accounts
+        const { data: accounts, error: accError } = await supabase
+          .from('snaptrade_accounts')
+          .select('*')
+          .eq('snaptrade_user_id', snapTradeUserId);
+  
+        console.log('💰 Accounts:', accounts);
+  
+        // Test the RPC function
+        const { data: rpcResult, error: rpcError } = await supabase
+          .rpc('get_user_brokerage_connections', { p_user_id: user.id });
+  
+        console.log('🔧 RPC Result:', rpcResult, rpcError);
+  
+        alert(`Database Check:\n\n` +
+          `SnapTrade Users: ${snapTradeUsers.length}\n` +
+          `Connections: ${connections?.length || 0}\n` +
+          `Accounts: ${accounts?.length || 0}\n` +
+          `RPC Works: ${rpcError ? 'No' : 'Yes'}`);
+      } else {
+        alert('No SnapTrade users found in database');
+      }
+  
+    } catch (error) {
+      console.error('Error checking database:', error);
+    }
+  };
+
   // Check for connection completion on page load
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -555,6 +859,8 @@ export default function SnapTradeTestPage() {
       }, 1000);
     }
   }, [snapTradeUser]);
+
+
 
   if (!user) {
     return (
@@ -590,11 +896,18 @@ export default function SnapTradeTestPage() {
                 </p>
               </div>
               <button
+                onClick={checkDatabaseData}
+                className="bg-indigo-100 text-indigo-700 px-4 py-2 rounded-md hover:bg-indigo-200 text-sm mr-2"
+              >
+                Check Database
+              </button>
+              <button
                 onClick={resetAllSteps}
                 className="bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 text-sm mr-2"
               >
                 Reset All Steps
               </button>
+            
               <button
                 onClick={listAllUsers}
                 className="bg-blue-100 text-blue-700 px-4 py-2 rounded-md hover:bg-blue-200 text-sm"
@@ -795,15 +1108,49 @@ export default function SnapTradeTestPage() {
                         </button>
                       )}
 
-                      {step.id === 2 && (
-                        <button
-                          onClick={createSnapTradeUser}
-                          disabled={step.loading || step.completed}
-                          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm"
-                        >
-                          {step.loading ? 'Creating...' : step.completed ? 'Created' : 'Create User'}
-                        </button>
-                      )}
+{step.id === 2 && (
+  <div className="flex space-x-2">
+    <button
+      onClick={createSnapTradeUser}
+      disabled={step.loading || step.completed}
+      className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm"
+    >
+      {step.loading ? 'Creating...' : step.completed ? 'Created' : 'Create New'}
+    </button>
+    <button
+      onClick={recoverExistingUser}
+      disabled={step.loading || step.completed}
+      className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-50 text-sm"
+    >
+      Recover Existing
+    </button>
+  </div>
+)}
+
+{step.id === 2.5 && (
+  <button
+    onClick={async () => {
+      updateStep(2.5, { loading: true, error: undefined });
+      try {
+        await syncAllConnectionsAndAccounts();
+        updateStep(2.5, { 
+          loading: false, 
+          completed: true, 
+          data: { message: 'All data synced successfully' } 
+        });
+      } catch (error) {
+        updateStep(2.5, { 
+          loading: false, 
+          error: 'Sync failed: ' + (error as Error).message 
+        });
+      }
+    }}
+    disabled={!snapTradeUser || step.loading}
+    className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 disabled:opacity-50 text-sm"
+  >
+    {step.loading ? 'Syncing...' : 'Sync All Data'}
+  </button>
+)}
 
                       {step.id === 3 && (
                         <button

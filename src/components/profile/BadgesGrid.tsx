@@ -145,7 +145,7 @@ export default function BadgesGrid({ badges, userId, onBadgesUpdate, className =
                 }`}
               >
                 {/* Badge Icon */}
-                <div className="flex items-center h-full">
+                <div className="flex items-center justify-center h-full">
                 <span className="text-3xl sm:text-3xl md:text-xl lg:text-lg xl:text-base 2xl:text-sm">{badge.icon}</span>
                 </div>
 

@@ -72,13 +72,13 @@ export default function BrokerageConnectionPanel({
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900">Brokerage Connections</h3>
-          <button 
+          {connections.length > 0 && (<button 
             onClick={onConnect}
             className="flex items-center space-x-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             <span>Connect New</span>
-          </button>
+          </button>)}
         </div>
       </div>
 
