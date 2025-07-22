@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Trophy, Lock, Calendar, Eye, X } from "lucide-react"
+import { supabase } from "@/lib/supabase"
 
 interface Badge {
   id: string
@@ -12,14 +13,17 @@ interface Badge {
   description: string
   category: "trading" | "social" | "connection" | "achievement"
   rarity: "common" | "rare" | "epic" | "legendary"
+  isNew?: boolean // Add this line
 }
 
 interface BadgesGridProps {
   badges: Badge[]
+  userId: string
+  onBadgesUpdate: (badges: Badge[]) => void
   className?: string
 }
 
-export default function BadgesGrid({ badges, className = "" }: BadgesGridProps) {
+export default function BadgesGrid({ badges, userId, onBadgesUpdate, className = "" }: BadgesGridProps) {
   const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null)
   const [showAll, setShowAll] = useState(false)
 
@@ -111,11 +115,29 @@ export default function BadgesGrid({ badges, className = "" }: BadgesGridProps) 
           </div>
 
           {/* Badges Grid */}
-          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3 mb-6">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 mb-6">
             {displayBadges.map((badge) => (
               <button
                 key={badge.id}
-                onClick={() => setSelectedBadge(badge)}
+                onClick={ async () => {
+                  // Clear red dot if badge is new
+                  if (badge.isNew && badge.earned) {
+                    const { error } = await supabase
+                      .from('user_badges')
+                      .update({ viewed_at: new Date().toISOString() })
+                      .eq('user_id', userId) // Make sure you pass userId to BadgesGrid
+                      .eq('badge_id', badge.id)
+                      .is('viewed_at', null)
+
+                    if (!error) {
+                      // Update local state to remove red dot immediately
+                      onBadgesUpdate(badges.map((b: Badge) => 
+                        b.id === badge.id ? { ...b, isNew: false } : b
+                      ))
+                    }
+                  }
+                  setSelectedBadge(badge)
+                }}
                 className={`relative aspect-square rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
                   badge.earned
                     ? `${getRarityBorder(badge.rarity)} bg-white shadow-lg`
@@ -123,7 +145,7 @@ export default function BadgesGrid({ badges, className = "" }: BadgesGridProps) 
                 }`}
               >
                 {/* Badge Icon */}
-                <div className="flex items-center justify-center h-full">
+                <div className="flex items-center h-full">
                 <span className="text-3xl sm:text-3xl md:text-xl lg:text-lg xl:text-base 2xl:text-sm">{badge.icon}</span>
                 </div>
 
@@ -142,8 +164,8 @@ export default function BadgesGrid({ badges, className = "" }: BadgesGridProps) 
                 )}
 
                 {/* New Badge Indicator */}
-                {badge.earned && badge.earnedDate && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                {badge.isNew && (
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
                 )}
               </button>
             ))}

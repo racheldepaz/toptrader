@@ -47,6 +47,7 @@ interface Badge {
   description: string
   category: "trading" | "social" | "connection" | "achievement"
   rarity: "common" | "rare" | "epic" | "legendary"
+  isNew?: boolean
 }
 
 interface BrokerageConnection {
@@ -340,10 +341,8 @@ const showXPGainNotification = (xpGained: number, description: string) => {
   //New data fetching functions for integrated components: badges
   const fetchBadges = async (userId: string) => {
     try {
-      // First, ensure badge definitions exist in database
       await ensureBadgeDefinitions()
       
-      // Get all badge definitions
       const { data: allBadges, error: badgeError } = await supabase
         .from('badge_definitions')
         .select('*')
@@ -354,20 +353,20 @@ const showXPGainNotification = (xpGained: number, description: string) => {
         return
       }
   
-      // Get user's earned badges
       const { data: userBadges, error: userBadgeError } = await supabase
         .from('user_badges')
-        .select('badge_id, earned_at')
+        .select('badge_id, earned_at, viewed_at') // Add viewed_at here
         .eq('user_id', userId)
   
       if (userBadgeError) {
         console.error("Error fetching user badges:", userBadgeError)
-        // Continue with empty user badges instead of failing
       }
   
-      // Combine the data
       const badges: Badge[] = (allBadges || []).map(badge => {
         const userBadge = (userBadges || []).find(ub => ub.badge_id === badge.id)
+        const isEarned = !!userBadge
+        const isNew = isEarned && !userBadge.viewed_at // This determines red dot
+        
         return {
           id: badge.id,
           name: badge.name,
@@ -375,18 +374,17 @@ const showXPGainNotification = (xpGained: number, description: string) => {
           description: badge.description,
           category: badge.category,
           rarity: badge.rarity,
-          earned: !!userBadge,
+          earned: isEarned,
           earnedDate: userBadge?.earned_at 
             ? new Date(userBadge.earned_at).toLocaleDateString() 
-            : undefined
+            : undefined,
+          isNew: isNew // This controls the red dot
         }
       })
   
-      console.log('📋 Fetched badges:', badges.length, 'total,', badges.filter(b => b.earned).length, 'earned')
       setBadges(badges)
     } catch (error) {
       console.error("Error fetching badges:", error)
-      // Set empty badges instead of failing completely
       setBadges([])
     }
   }
@@ -750,7 +748,7 @@ const showXPGainNotification = (xpGained: number, description: string) => {
             )}
             
             {/* Badges Grid Component */}
-            <BadgesGrid badges={badges} />
+            <BadgesGrid badges={badges} userId={profile.id} onBadgesUpdate={setBadges} />
           </div>
 
           {/* Right Column - Main Content */}
