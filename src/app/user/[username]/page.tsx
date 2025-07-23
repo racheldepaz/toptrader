@@ -497,7 +497,7 @@ const showXPGainNotification = (xpGained: number, description: string) => {
       }
   
       // Convert database format to component format
-      const formattedConnections: BrokerageConnection[] = (connections || []).map(conn => ({
+      const formattedConnections: BrokerageConnection[] = (connections || []).map((conn: any) => ({
         id: conn.id,
         name: conn.name,
         status: conn.status as "connected" | "disconnected" | "syncing",
