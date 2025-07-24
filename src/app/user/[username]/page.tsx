@@ -51,7 +51,7 @@ interface Badge {
 }
 
 interface BrokerageConnection {
-  id: number
+  id: string
   name: string
   status: "connected" | "disconnected" | "syncing"
   lastSync: string
@@ -82,6 +82,8 @@ export default function UserProfilePage() {
   const [levelData, setLevelData] = useState<LevelData | null>(null)
   const [badges, setBadges] = useState<Badge[]>([])
   const [brokerageConnections, setBrokerageConnections] = useState<BrokerageConnection[]>([])
+
+  const isOwnProfile = currentUser?.id === profile?.id
 
 
   useEffect(() => {
@@ -482,9 +484,9 @@ const showXPGainNotification = (xpGained: number, description: string) => {
         return
       }
   
-      console.log('🔗 Calling get_user_brokerage_connections RPC...')
+      console.log('🔗 Using the working RPC function...')
   
-      // Get real brokerage connections from database
+      // Use the RPC function we just fixed instead of direct queries
       const { data: connections, error } = await supabase
         .rpc('get_user_brokerage_connections', { p_user_id: userId })
   
@@ -501,18 +503,40 @@ const showXPGainNotification = (xpGained: number, description: string) => {
         id: conn.id,
         name: conn.name,
         status: conn.status as "connected" | "disconnected" | "syncing",
-        lastSync: conn.last_sync,
-        accountValue: parseFloat(conn.account_value.toString()) || 0,
+        lastSync: conn.last_sync ? formatLastSync(conn.last_sync) : "Never synced",
+        accountValue: parseFloat(conn.account_value?.toString() || '0'),
         logo: conn.logo
       }))
   
       console.log('🔗 Formatted connections:', formattedConnections)
       setBrokerageConnections(formattedConnections)
+  
     } catch (error) {
       console.error("Error fetching brokerage connections:", error)
       setBrokerageConnections([])
     }
   }
+
+  // Helper function to format last sync time
+  const formatLastSync = (timestamp: string): string => {
+    try {
+      const date = new Date(timestamp)
+      const now = new Date()
+      const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
+      
+      if (diffInMinutes < 1) return "Just now"
+      if (diffInMinutes < 60) return `${diffInMinutes}m ago`
+      if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`
+      if (diffInMinutes < 10080) return `${Math.floor(diffInMinutes / 1440)}d ago`
+      
+      // For older dates, show the actual date
+      return date.toLocaleDateString()
+    } catch (error) {
+      console.error('Error formatting timestamp:', error)
+      return "Unknown"
+    }
+  }
+  
 
   // Update stats when selectedPeriod changes
   useEffect(() => {
@@ -621,21 +645,143 @@ const showXPGainNotification = (xpGained: number, description: string) => {
       year: "numeric",
     })
   }
-
-  const isOwnProfile = currentUser?.id === profile?.id
-
   // Handle new component actions
   const handleConnectBrokerage = () => {
     // TODO: Implement brokerage connection flow
     console.log("Connect new brokerage account")
   }
 
-  const handleRefreshConnection = (id: number) => {
-    // TODO: Implement brokerage refresh
-    console.log("Refresh connection:", id)
+  const handleRefreshConnection = async (connectionId: string) => {
+    console.log('🔄 Refreshing connection (regular API):', connectionId)
+    
+    try {
+      // Get user credentials
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('snaptrade_user_id, snaptrade_user_secret')
+        .eq('id', profile?.id)
+        .single()
+  
+      if (userError || !user?.snaptrade_user_id || !user?.snaptrade_user_secret) {
+        console.error('❌ No SnapTrade credentials found')
+        return
+      }
+  
+      // Get the accounts for this connection
+      const { data: connectionAccounts, error: accountsError } = await supabase
+        .from('snaptrade_accounts')
+        .select('snaptrade_account_id, account_name, balance_amount')
+        .eq('snaptrade_connection_id', connectionId)
+  
+      if (accountsError || !connectionAccounts?.length) {
+        console.error('❌ No accounts found for this connection')
+        return
+      }
+  
+      console.log(`📊 Refreshing ${connectionAccounts.length} accounts with regular API`)
+  
+      // Call regular account-details API ($0.03 per account)
+      // This will get the latest cached data if SnapTrade has refreshed it
+      for (const accountRecord of connectionAccounts) {
+        const accountId = accountRecord.snaptrade_account_id
+        
+        try {
+          console.log(`💰 Getting latest cached data for account: ${accountId}`)
+          
+          // Use regular account-details endpoint (NOT manual refresh)
+          const response = await fetch('/api/snaptrade/account-details', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.snaptrade_user_id,
+              userSecret: user.snaptrade_user_secret,
+              accountId: accountId,
+              topTraderUserId: profile?.id // This updates our database
+            })
+          })
+  
+          if (response.ok) {
+            const details = await response.json()
+            console.log(`✅ Latest cached balance for ${accountId}:`, details.balance?.total)
+            console.log(`📅 SnapTrade last sync:`, details.sync_status?.holdings?.last_successful_sync)
+          } else {
+            console.error(`❌ Failed to refresh account ${accountId}`)
+          }
+        } catch (error) {
+          console.error(`❌ Error refreshing account ${accountId}:`, error)
+        }
+      }
+  
+      // Update our connection's last sync time
+      await supabase
+        .from('snaptrade_connections')
+        .update({ 
+          last_sync_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('snaptrade_connection_id', connectionId)
+  
+      // Refresh UI
+      if (profile?.id) {
+        await fetchBrokerageConnections(profile.id)
+      }
+  
+      console.log('✅ Regular refresh completed! Got latest cached data from SnapTrade.')
+  
+    } catch (error) {
+      console.error('❌ Error refreshing connection:', error)
+    }
+  }
+  
+  const canRefreshConnection = (lastSyncDate: string): boolean => {
+    if (!lastSyncDate) return true // Never synced, allow refresh
+    
+    const lastSync = new Date(lastSyncDate)
+    const now = new Date()
+    const hoursElapsed = (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60)
+    
+    return hoursElapsed >= 24
   }
 
-  const handleDisconnectBrokerage = (id: number) => {
+  const getTimeUntilNextRefresh = (lastSyncDate: string): string => {
+    if (!lastSyncDate) return "Available now"
+    
+    const lastSync = new Date(lastSyncDate)
+    const now = new Date()
+    const hoursElapsed = (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60)
+    
+    if (hoursElapsed >= 24) return "Available now"
+    
+    const hoursRemaining = 24 - hoursElapsed
+    const hours = Math.floor(hoursRemaining)
+    const minutes = Math.floor((hoursRemaining - hours) * 60)
+    
+    if (hours > 0) {
+      return `Available in ${hours}h ${minutes}m`
+    } else {
+      return `Available in ${minutes}m`
+    }
+  }
+
+  const getRefreshTooltipMessage = (snapTradeLastSync: string): string => {
+    if (!snapTradeLastSync) return "Click to get latest data"
+    
+    const lastSync = new Date(snapTradeLastSync)
+    const now = new Date()
+    const hoursElapsed = (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60)
+    
+    if (hoursElapsed >= 24) {
+      return "Click to check for updated data"
+    }
+    
+    const hoursUntilUseful = 24 - hoursElapsed
+    const hours = Math.floor(hoursUntilUseful)
+    const minutes = Math.floor((hoursUntilUseful - hours) * 60)
+    
+    return `Data is current. New data available in ~${hours}h ${minutes}m`
+  }
+
+  const handleDisconnectBrokerage = (id: string) => {
     // TODO: Implement brokerage disconnect
     console.log("Disconnect brokerage:", id)
   }
@@ -776,8 +922,6 @@ const showXPGainNotification = (xpGained: number, description: string) => {
 
             
             {/* Brokerage Connections - Only show for own profile */}
-            
-            
             {isOwnProfile && (
               <BrokerageConnectionPanel
                 connections={brokerageConnections}

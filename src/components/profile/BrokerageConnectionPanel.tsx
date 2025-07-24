@@ -3,8 +3,39 @@
 import { useState } from "react"
 import { Plus, RefreshCw, Unlink, CheckCircle, XCircle, Clock } from "lucide-react"
 
+
+const canRefreshConnection = (lastSyncDate: string): boolean => {
+  if (!lastSyncDate) return true // Never synced, allow refresh
+  
+  const lastSync = new Date(lastSyncDate)
+  const now = new Date()
+  const hoursElapsed = (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60)
+  
+  return hoursElapsed >= 24
+}
+
+const getTimeUntilNextRefresh = (lastSyncDate: string): string => {
+  if (!lastSyncDate) return "Available now"
+  
+  const lastSync = new Date(lastSyncDate)
+  const now = new Date()
+  const hoursElapsed = (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60)
+  
+  if (hoursElapsed >= 24) return "Available now"
+  
+  const hoursRemaining = 24 - hoursElapsed
+  const hours = Math.floor(hoursRemaining)
+  const minutes = Math.floor((hoursRemaining - hours) * 60)
+  
+  if (hours > 0) {
+    return `Available soon`
+  } else {
+    return `Available in ${minutes}m`
+  }
+}
+
 interface BrokerageConnection {
-  id: number
+  id: string  
   name: string
   status: "connected" | "disconnected" | "syncing"
   lastSync: string
@@ -15,8 +46,8 @@ interface BrokerageConnection {
 interface BrokerageConnectionPanelProps {
   connections: BrokerageConnection[]
   onConnect?: () => void
-  onRefresh?: (id: number) => void
-  onDisconnect?: (id: number) => void
+  onRefresh?: (id: string) => void  
+  onDisconnect?: (id: string) => void 
 }
 
 export default function BrokerageConnectionPanel({
@@ -25,9 +56,9 @@ export default function BrokerageConnectionPanel({
   onRefresh,
   onDisconnect,
 }: BrokerageConnectionPanelProps) {
-  const [refreshingId, setRefreshingId] = useState<number | null>(null)
+  const [refreshingId, setRefreshingId] = useState<string | null>(null)
 
-  const handleRefresh = async (id: number) => {
+  const handleRefresh = async (id: string) => {
     setRefreshingId(id)
     await new Promise((resolve) => setTimeout(resolve, 2000)) // Simulate API call
     onRefresh?.(id)
@@ -108,7 +139,28 @@ export default function BrokerageConnectionPanel({
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <div className="text-2xl">{connection.logo}</div>
+                <div className="w-8 h-8 flex items-center justify-center">
+                {connection.logo.startsWith('http') ? (
+                <img 
+                src={connection.logo} 
+                alt={`${connection.name} logo`}
+                className="w-full h-full object-cover rounded-full"
+                onError={(e) => {
+                // Fallback to emoji if image fails to load
+                const target = e.currentTarget
+                const parent = target.parentElement
+                if (parent) {
+                target.style.display = 'none'
+                parent.innerHTML = '🏦' // Bank emoji fallback
+                parent.classList.add('text-2xl')
+                parent.classList.remove('w-8', 'h-8')
+                }
+                }}
+                />
+                ) : (
+                <span className="text-2xl">{connection.logo}</span>
+                )}
+                </div>
                   <div>
                     <div className="flex items-center space-x-2">
                       <h4 className="font-medium text-gray-900">{connection.name}</h4>
@@ -123,22 +175,47 @@ export default function BrokerageConnectionPanel({
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  {connection.status === "connected" && (
-                    <>
-                      <div className="text-right">
-                        <p className="font-semibold text-gray-900">${connection.accountValue.toLocaleString()}</p>
-                        <p className="text-xs text-gray-500">Account Value</p>
-                      </div>
-                      <button
-                        onClick={() => handleRefresh(connection.id)}
-                        disabled={refreshingId === connection.id}
-                        className="p-2 text-gray-600 hover:text-gray-900 hover:bg-white rounded-lg transition-colors disabled:opacity-50"
-                        title="Refresh connection"
-                      >
-                        <RefreshCw className={`w-4 h-4 ${refreshingId === connection.id ? "animate-spin" : ""}`} />
-                      </button>
-                    </>
-                  )}
+                {connection.status === "connected" && (
+  <>
+    <div className="text-right">
+      <p className="font-semibold text-gray-900">${connection.accountValue.toLocaleString()}</p>
+      <p className="text-xs text-gray-500">Account Value</p>
+    </div>
+    
+    {/* Smart Refresh Button with Tooltip */}
+    <div className="relative group">
+      <button
+        onClick={() => {
+          const canRefresh = canRefreshConnection(connection.lastSync)
+          if (canRefresh) {
+            handleRefresh(connection.id)
+          }
+        }}
+        disabled={refreshingId === connection.id || !canRefreshConnection(connection.lastSync)}
+        className={`p-2 rounded-lg transition-colors ${
+          canRefreshConnection(connection.lastSync)
+            ? 'text-gray-600 hover:text-gray-900 hover:bg-white'
+            : 'text-gray-300 cursor-not-allowed'
+        } ${refreshingId === connection.id ? 'opacity-50' : ''}`}
+        title={canRefreshConnection(connection.lastSync) ? "Refresh connection" : undefined}
+      >
+        <RefreshCw className={`w-4 h-4 ${refreshingId === connection.id ? "animate-spin" : ""}`} />
+      </button>
+      
+      {/* Tooltip for disabled state */}
+      {!canRefreshConnection(connection.lastSync) && (
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+          <div className="text-center">
+            <div>Data refreshes once per day</div>
+            <div className="text-gray-300">{getTimeUntilNextRefresh(connection.lastSync)}</div>
+          </div>
+          {/* Tooltip arrow */}
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
+        </div>
+      )}
+    </div>
+  </>
+)}
 
                   {connection.status === "disconnected" && (
                     <button
@@ -151,7 +228,7 @@ export default function BrokerageConnectionPanel({
 
                   {connection.status === "connected" && (
                     <button
-                      onClick={() => onDisconnect?.(connection.id)}
+                      onClick={() => onDisconnect?.(connection.id)}                      
                       className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                       title="Disconnect"
                     >
