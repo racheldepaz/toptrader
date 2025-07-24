@@ -9,8 +9,8 @@ const canRefreshConnection = (lastSyncDate: string): boolean => {
   
   const lastSync = new Date(lastSyncDate)
   const now = new Date()
-  const hoursElapsed = (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60)
-  
+ // const hoursElapsed = (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60)
+  let hoursElapsed = 24
   return hoursElapsed >= 24
 }
 
@@ -203,7 +203,7 @@ export default function BrokerageConnectionPanel({
       </button>
       
       {/* Tooltip for disabled state */}
-      {!canRefreshConnection(connection.lastSync) && (
+       {!canRefreshConnection(connection.lastSync) && (
         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
           <div className="text-center">
             <div>Data refreshes once per day</div>
