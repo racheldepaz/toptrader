@@ -4,6 +4,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { Search } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import { useAuthModal } from '@/context/AuthModalContext';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
 import { useUserProfileQuery } from '@/hooks/useUserProfileQuery';

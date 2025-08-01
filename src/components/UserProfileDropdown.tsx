@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { User, Settings, LogOut, BarChart3, Users, TrendingUp, AlertCircle } from 'lucide-react';
+import {supabase} from '@/lib/supabase'
 
 interface UserProfileDropdownProps {
   profile: {
@@ -37,6 +38,11 @@ export default function UserProfileDropdown({
   }, []);
 
   if (!profile) return null;
+
+  const getLatestPortfolioValue = async () => {
+    const { data: profileStats } = await supabase.from('user_stats').select('*').eq('user_id', profile.id).single()
+    return profileStats?.portfolio_value
+  }
 
   // Get user initials for avatar fallback
   const getInitials = () => {
