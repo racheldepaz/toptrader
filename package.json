@@ -22,7 +22,8 @@
     "react-dom": "^19.0.0",
     "react-icons": "^5.5.0",
     "snaptrade-typescript-sdk": "^9.0.118",
-    "tailwindcss": "^4.1.11"
+    "tailwindcss": "^4.1.11",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
