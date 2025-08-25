@@ -637,6 +637,8 @@ const showXPGainNotification = (xpGained: number, description: string) => {
     } finally {
       setRefreshing(false)
     }
+
+    
   }
 
   const formatJoinDate = (dateString: string) => {
@@ -728,10 +730,30 @@ const showXPGainNotification = (xpGained: number, description: string) => {
   
       console.log('✅ Regular refresh completed! Got latest cached data from SnapTrade.')
   
-    } catch (error) {
-      console.error('❌ Error refreshing connection:', error)
-    }
+      // 🆕 NEW: Automatically refresh performance stats after connection refresh
+      console.log('🔄 Auto-refreshing performance stats after connection update...')
+      try {
+        if (profile?.id) {
+          // Call the PostgreSQL function to refresh stats
+          const { error: statsError } = await supabase.rpc("refresh_all_user_stats", { p_user_id: profile.id })
+
+          if (statsError) {
+            console.error("Error refreshing stats:", statsError)
+          } else {
+            // Refetch the updated stats to update the UI
+            await fetchTradingStats(profile.id)
+            console.log('✅ Performance stats automatically refreshed!')
+          }
+        }
+      } catch (statsRefreshError) {
+        console.error("Error in auto-refresh of stats:", statsRefreshError)
+      }
+    
+    
+  } catch (error) {
+    console.error('❌ Error refreshing connection:', error)
   }
+}
   
   const canRefreshConnection = (lastSyncDate: string): boolean => {
     if (!lastSyncDate) return true // Never synced, allow refresh
