@@ -993,7 +993,7 @@ const showXPGainNotification = (xpGained: number, description: string) => {
                         />
                       )}
 
-                      {/* Refresh Button - Only show for own profile */}
+                      {/* Refresh Button - Only show for own profile 
                       {isOwnProfile && (
                         <button
                           onClick={handleRefreshStats}
@@ -1003,7 +1003,7 @@ const showXPGainNotification = (xpGained: number, description: string) => {
                         >
                           <RefreshCw className={`w-5 h-5 ${refreshing ? "animate-spin" : ""}`} />
                         </button>
-                      )}
+                      )}*/}
                     </div>
                   </div>
 

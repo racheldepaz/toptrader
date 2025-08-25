@@ -269,7 +269,7 @@ export default function UserProfileDropdown({
                     }`}>
                       Portfolio: {formatPortfolioValue()}
                     </span>
-                    {/* Refresh button */}
+                    {/* Refresh button 
                     <button
                       onClick={handleRefreshPortfolio}
                       disabled={portfolioData.loading}
@@ -277,7 +277,7 @@ export default function UserProfileDropdown({
                       title="Refresh portfolio value"
                     >
                       <RefreshCw className={`w-3 h-3 ${portfolioData.loading ? 'animate-spin' : ''}`} />
-                    </button>
+                    </button> */}
                   </div>
                 )}
               </div>
