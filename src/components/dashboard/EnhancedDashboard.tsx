@@ -162,7 +162,7 @@ const PerformanceWidget = () => {
         <div className="flex justify-between items-center">
           <span className="text-sm text-gray-600">Win Rate</span>
           <span className={`text-sm font-medium ${
-            (stats.win_rate || 0) >= 50 ? 'text-green-600' : 'text-red-600'
+            (stats.win_rate || 0) >= 0 ? 'text-green-600' : 'text-red-600'
           }`}>
             {((stats.win_rate || 0)).toFixed(1)}%
           </span>
