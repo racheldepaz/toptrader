@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { User, Settings, LogOut, BarChart3, Users, TrendingUp, AlertCircle } from 'lucide-react';
-import {supabase} from '@/lib/supabase'
+import { User, Settings, LogOut, BarChart3, Users, TrendingUp, AlertCircle, RefreshCw } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 interface UserProfileDropdownProps {
   profile: {
@@ -16,6 +16,13 @@ interface UserProfileDropdownProps {
   onCompleteProfile?: () => void;
 }
 
+interface PortfolioData {
+  totalBalance: number;
+  totalAccounts: number;
+  loading: boolean;
+  error?: string;
+}
+
 export default function UserProfileDropdown({ 
   profile, 
   hasCompletedProfile, 
@@ -23,6 +30,11 @@ export default function UserProfileDropdown({
   onCompleteProfile 
 }: UserProfileDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [portfolioData, setPortfolioData] = useState<PortfolioData>({
+    totalBalance: 0,
+    totalAccounts: 0,
+    loading: false
+  });
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
@@ -37,12 +49,85 @@ export default function UserProfileDropdown({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  if (!profile) return null;
+  // Fetch portfolio data when component mounts or profile changes
+  useEffect(() => {
+    if (profile?.id && hasCompletedProfile) {
+      fetchPortfolioData();
+    }
+  }, [profile?.id, hasCompletedProfile]);
 
-  const getLatestPortfolioValue = async () => {
-    const { data: profileStats } = await supabase.from('user_stats').select('*').eq('user_id', profile.id).single()
-    return profileStats?.portfolio_value
-  }
+  // Function to fetch portfolio total from database
+  const fetchPortfolioData = async () => {
+    if (!profile?.id) return;
+
+    setPortfolioData(prev => ({ ...prev, loading: true, error: undefined }));
+
+    try {
+      console.log('💰 Fetching portfolio data for user:', profile.id);
+      const response = await fetch(`/api/snaptrade/account-details?userId=${profile.id}`);
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log('✅ Portfolio data loaded:', data);
+        setPortfolioData({
+          totalBalance: data.totalBalance || 0,
+          totalAccounts: data.totalAccounts || 0,
+          loading: false
+        });
+      } else {
+        console.error('❌ Failed to load portfolio:', data.error);
+        setPortfolioData(prev => ({
+          ...prev,
+          loading: false,
+          error: data.error || 'Failed to load portfolio'
+        }));
+      }
+    } catch (error) {
+      console.error('❌ Error fetching portfolio data:', error);
+      setPortfolioData(prev => ({
+        ...prev,
+        loading: false,
+        error: 'Network error'
+      }));
+    }
+  };
+
+  // Function to manually refresh portfolio data
+  const handleRefreshPortfolio = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent dropdown from closing
+    e.preventDefault(); // Prevent any default button behavior
+    console.log('🔄 Manual portfolio refresh triggered');
+    await fetchPortfolioData();
+  };
+
+  // Set up real-time subscription for portfolio updates
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    console.log('🔄 Setting up real-time portfolio updates for user:', profile.id);
+
+    // Subscribe to snaptrade_accounts changes for this user
+    const portfolioSubscription = supabase
+      .channel(`portfolio_updates_${profile.id}`)
+      .on('postgres_changes', {
+        event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+        schema: 'public',
+        table: 'snaptrade_accounts',
+        filter: `user_id=eq.${profile.id}`
+      }, (payload) => {
+        console.log('💰 Portfolio data updated:', payload);
+        // Refresh portfolio data when accounts change
+        fetchPortfolioData();
+      })
+      .subscribe();
+
+    return () => {
+      console.log('🔄 Cleaning up portfolio subscription');
+      supabase.removeChannel(portfolioSubscription);
+    };
+  }, [profile?.id]);
+
+  if (!profile) return null;
 
   // Get user initials for avatar fallback
   const getInitials = () => {
@@ -65,6 +150,23 @@ export default function UserProfileDropdown({
 
   const displayName = profile.display_name || profile.username || profile.email?.split('@')[0] || 'User';
   const username = profile.username || profile.email?.split('@')[0] || 'user';
+
+  // Format portfolio value
+  const formatPortfolioValue = () => {
+    if (portfolioData.loading) {
+      return 'Loading...';
+    }
+    if (portfolioData.error) {
+      return 'Error';
+    }
+    if (portfolioData.totalBalance === 0) {
+      return 'Connect account';
+    }
+    return `$${portfolioData.totalBalance.toLocaleString('en-US', { 
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 2 
+    })}`;
+  };
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -157,10 +259,25 @@ export default function UserProfileDropdown({
                   {hasCompletedProfile ? `@${username}` : 'Profile incomplete'}
                 </div>
                 {hasCompletedProfile && (
-                  <div className="mt-2">
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      Portfolio: $175.20
+                  <div className="mt-2 flex items-center space-x-2">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                      portfolioData.error 
+                        ? 'bg-red-100 text-red-800'
+                        : portfolioData.totalBalance === 0
+                        ? 'bg-gray-100 text-gray-800'
+                        : 'bg-green-100 text-green-800'
+                    }`}>
+                      Portfolio: {formatPortfolioValue()}
                     </span>
+                    {/* Refresh button */}
+                    <button
+                      onClick={handleRefreshPortfolio}
+                      disabled={portfolioData.loading}
+                      className="p-1 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                      title="Refresh portfolio value"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${portfolioData.loading ? 'animate-spin' : ''}`} />
+                    </button>
                   </div>
                 )}
               </div>
@@ -255,43 +372,42 @@ export default function UserProfileDropdown({
                   </div>
                   <div className="flex-1 text-left">
                     <div className="font-medium text-gray-900">Leaderboards</div>
-                    <div className="text-xs text-gray-500 mt-0.5">See where you rank</div>
+                    <div className="text-xs text-gray-500 mt-0.5">See top traders</div>
+                  </div>
+                </Link>
+
+                {/* Settings */}
+                <Link
+                  href="/settings"
+                  className="flex items-center px-4 py-3 text-sm hover:bg-gray-50 transition-colors group"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-gray-50 mr-3 group-hover:bg-gray-100 transition-colors">
+                    <Settings className="w-5 h-5 text-gray-600" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="font-medium text-gray-900">Settings</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Account & privacy settings</div>
                   </div>
                 </Link>
               </>
             )}
+          </div>
 
-            {/* Divider */}
-            <div className="border-t border-gray-100 my-2 mx-4"></div>
-
-            {/* Settings */}
-            <Link
-              href="/settings"
-              className="flex items-center px-4 py-3 text-sm hover:bg-gray-50 transition-colors group"
-              onClick={() => setIsOpen(false)}
-            >
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-gray-50 mr-3 group-hover:bg-gray-100 transition-colors">
-                <Settings className="w-5 h-5 text-gray-600" />
-              </div>
-              <div className="flex-1 text-left">
-                <div className="font-medium text-gray-900">Settings</div>
-                <div className="text-xs text-gray-500 mt-0.5">Account & privacy settings</div>
-              </div>
-            </Link>
-
-            {/* Logout */}
+          {/* Logout */}
+          <div className="py-2 border-t border-gray-100">
             <button
               onClick={() => {
                 setIsOpen(false);
                 onLogout();
               }}
-              className="w-full flex items-center px-4 py-3 text-sm hover:bg-red-50 transition-colors group"
+              className="w-full flex items-center px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors group"
             >
               <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-red-50 mr-3 group-hover:bg-red-100 transition-colors">
                 <LogOut className="w-5 h-5 text-red-600" />
               </div>
               <div className="flex-1 text-left">
-                <div className="font-medium text-gray-900">Log Out</div>
+                <div className="font-medium">Sign out</div>
                 <div className="text-xs text-gray-500 mt-0.5">Sign out of your account</div>
               </div>
             </button>
