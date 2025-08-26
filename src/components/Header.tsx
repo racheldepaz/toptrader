@@ -4,7 +4,6 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { Search } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import { useAuthModal } from '@/context/AuthModalContext';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
 import { useUserProfileQuery } from '@/hooks/useUserProfileQuery';
@@ -46,6 +45,8 @@ export default function Header() {
     openSignupModal();
   };
 
+
+
   // Show loading state while auth is resolving
   if (loading) {
     return (
@@ -83,7 +84,7 @@ export default function Header() {
               <nav className="hidden md:flex space-x-6">
                 <Link 
                   href="/feed" 
-                  className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                  className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
                 >
                   Feed
                 </Link>
@@ -91,7 +92,7 @@ export default function Header() {
                   href="/leaderboards" 
                   className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
                 >
-                  Leaderboard
+                  Leaderboards
                 </Link>
                 <Link 
                   href="/friends" 
@@ -127,35 +128,28 @@ export default function Header() {
           {/* Right side: Auth Section */}
           <div className="flex items-center space-x-4">
             {isAuthenticated ? (
-              <UserProfileDropdown 
+              <UserProfileDropdown
                 profile={profile || null}
                 hasCompletedProfile={hasCompletedProfile}
                 onLogout={handleLogout}
                 onCompleteProfile={handleCompleteProfile}
               />
             ) : (
-              <div className="hidden md:flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 <button
                   onClick={openLoginModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-600 bg-blue-100 rounded-md hover:bg-gray-100 transition-colors"
+                  className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
                 >
-                  Log In
+                  Log in
                 </button>
                 <button
                   onClick={openSignupModal}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
                 >
-                  Sign Up
+                  Sign up
                 </button>
               </div>
             )}
-            
-            {/* Mobile menu button */}
-            <button className="md:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
           </div>
         </div>
       </div>
