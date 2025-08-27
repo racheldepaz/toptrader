@@ -1,3 +1,4 @@
+import type React from "react"
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -15,12 +16,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "TopTrader - Social Trading Platform",
-  description: "Join the social trading revolution. Share your wins, learn from the best, and climb the leaderboards.",
+  description: "Track your trades like athletes track their workouts. Join the social trading revolution.",
   keywords: ["trading", "social trading", "stocks", "crypto", "leaderboard"],
   authors: [{ name: "TopTrader" }],
   openGraph: {
     title: "TopTrader - Social Trading Platform",
-    description: "Join the social trading revolution",
+    description: "Track your trades like athletes track their workouts. Join the social trading revolution.",
     type: "website",
   },
 };
