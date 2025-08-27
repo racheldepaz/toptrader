@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
 import { supabase } from '@/lib/supabase';
-import { getSiteUrl } from '@/lib/url';
+import { useAuthModal } from '@/context/AuthModalContext';
 
 interface EnhancedLoginModalProps {
   isOpen: boolean;
@@ -16,8 +16,55 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [useFallback, setUseFallback] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   
   const { login } = useSupabaseAuth();
+  const { 
+    loginEmail, 
+    welcomeMessage, 
+    clearLoginPrefills, 
+    openSignupModal 
+  } = useAuthModal();
+
+  const getSiteUrl = () => {
+    console.log('🌐 getSiteUrl: Detecting site URL...');
+    
+    if (process.env.NEXT_PUBLIC_SITE_URL) {
+      console.log('🌐 getSiteUrl: Using env variable:', process.env.NEXT_PUBLIC_SITE_URL);
+      return process.env.NEXT_PUBLIC_SITE_URL;
+    }
+    
+    if (typeof window !== 'undefined') {
+      const origin = window.location.origin;
+      console.log('🌐 getSiteUrl: Using window.location.origin:', origin);
+      return origin;
+    }
+    
+    console.log('🌐 getSiteUrl: Using fallback localhost');
+    return 'http://localhost:3000';
+  };
+
+  // Handle prefilled email and welcome message
+  useEffect(() => {
+    if (loginEmail) {
+      setEmail(loginEmail);
+      setShowWelcome(!!welcomeMessage);
+      console.log('👋 EnhancedLoginModal: Pre-filling email and showing welcome:', loginEmail);
+    } else {
+      setShowWelcome(false);
+    }
+  }, [loginEmail, welcomeMessage]);
+
+  // Clear welcome message after 5 seconds
+  useEffect(() => {
+    if (showWelcome && welcomeMessage) {
+      const timer = setTimeout(() => {
+        setShowWelcome(false);
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [showWelcome, welcomeMessage]);
 
   const handleGoogleLogin = async () => {
     console.log('🔵 handleGoogleLogin: Starting Google OAuth flow');
@@ -26,7 +73,7 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${getSiteUrl()}/` // Just redirect to dashboard
+          redirectTo: `${getSiteUrl()}/`
         }
       });
       
@@ -36,7 +83,6 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
         console.log('❌ handleGoogleLogin: OAuth error:', error);
         setError(error.message);
       }
-      // Note: If successful, user will be redirected to Google, then back to our app
     } catch (err) {
       console.log('❌ handleGoogleLogin: Unexpected error:', err);
       setError('An unexpected error occurred with Google sign-in');
@@ -63,8 +109,7 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
       if (loginError) {
         setError(loginError.message);
       } else {
-        onClose();
-        // The auth state change will trigger a re-render
+        handleClose();
       }
     } catch (err) {
       console.error('Login error:', err);
@@ -74,6 +119,20 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
     setLoading(false);
   };
 
+  const handleClose = () => {
+    onClose();
+    clearLoginPrefills();
+    setError('');
+    setShowWelcome(false);
+  };
+
+  const handleSwitchToSignup = () => {
+    handleClose();
+    setTimeout(() => {
+      openSignupModal();
+    }, 100);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -81,8 +140,17 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
       <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Welcome Back</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+          <button onClick={handleClose} className="text-gray-500 hover:text-gray-700">✕</button>
         </div>
+
+        {/* Welcome back message */}
+        {showWelcome && welcomeMessage && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-sm text-blue-700 text-center font-medium">
+              {welcomeMessage}
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
@@ -93,6 +161,7 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
         {/* Google Sign-In Button */}
         <button 
           onClick={handleGoogleLogin}
+          disabled={loading}
           className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 mb-4 transition-colors shadow-sm"
         >
           <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
@@ -150,7 +219,7 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
           <div className="mt-4 text-sm text-gray-600 text-center">
             <p>Don&apos;t have an account? 
               <button 
-                onClick={() => {/* Switch to signup modal */}} 
+                onClick={handleSwitchToSignup}
                 className="text-blue-600 hover:text-blue-700 ml-1"
               >
                 Sign up
