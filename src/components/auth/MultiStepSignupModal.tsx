@@ -67,12 +67,82 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
 
   // Check if we're coming back from email verification
   useEffect(() => {
-    console.log('🔄 useEffect: Email verification check', { user, signupStep });
+    const handleAuthToken = async () => {
+      // Check if we have auth tokens in the URL fragment
+      if (typeof window !== 'undefined' && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        const type = hashParams.get('type');
+        
+        console.log('🔗 Auth token found in URL:', { 
+          hasAccessToken: !!accessToken, 
+          hasRefreshToken: !!refreshToken, 
+          type 
+        });
+        
+        if (accessToken && refreshToken && type === 'signup') {
+          console.log('✅ Email confirmation successful, setting session...');
+          
+          try {
+            // Set the session using the tokens
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            });
+            
+            console.log('🔐 Session set result:', { 
+              user: data.user ? { id: data.user.id, email: data.user.email } : null,
+              error 
+            });
+            
+            if (!error && data.user) {
+              // Clean up the URL
+              window.history.replaceState({}, '', window.location.pathname + '?signup=verify');
+              
+              // Move to password step
+              console.log('🔐 Moving to password step after email verification');
+              setSignupStep('password');
+            } else {
+              console.error('❌ Failed to set session:', error);
+              setError('Failed to verify email. Please try again.');
+            }
+          } catch (err) {
+            console.error('❌ Error setting session:', err);
+            setError('Failed to verify email. Please try again.');
+          }
+        }
+      }
+    };
+    
+    // Run immediately when component mounts
+    handleAuthToken();
+    
+    // Also run when the location hash changes (in case user navigates back/forward)
+    const handleHashChange = () => {
+      handleAuthToken();
+    };
+    
+    window.addEventListener('hashchange', handleHashChange);
+    
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []); // Empty dependency array - only run once on mount
+  
+
+  useEffect(() => {
+    console.log('🔄 useEffect: Email verification check', { 
+      user: user ? { id: user.id, email: user.email } : null, 
+      signupStep
+    });
+    
+    // If we have a user and we're currently in the verify step, move to password
     if (user && signupStep === 'verify') {
-      console.log('✅ Email verified! Moving to password step');
+      console.log('✅ Email verified! User exists, moving to password step');
       setSignupStep('password');
     }
-  }, [user, signupStep, setSignupStep]);
+  }, [user, signupStep]);
 
   // Enhanced email submission with existing user detection
   const handleEmailSubmit = async (e: React.FormEvent) => {
@@ -83,89 +153,49 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
       console.log('❌ handleEmailSubmit: No email provided');
       return;
     }
-
+  
     setLoading(true);
     setError('');
-
+  
     try {
-      // First, check if this email already exists in our users table
-      console.log('🔍 handleEmailSubmit: Checking if user profile exists for email...');
+      const siteUrl = getSiteUrl();
+      // Change this to redirect to the main page with verify param
+      const redirectUrl = `${siteUrl}/?signup=verify`;
       
-      const { data: existingUser, error: userCheckError } = await supabase
-        .from('users')
-        .select('username, display_name, id, email')
-        .eq('email', email.toLowerCase())
-        .single();
-
-      console.log('🔍 handleEmailSubmit: User profile check result:', { existingUser, userCheckError });
-
-      if (existingUser && !userCheckError) {
-        // User exists! Redirect to login
-        console.log('👋 handleEmailSubmit: User exists! Redirecting to login...');
-        
-        const welcomeUsername = existingUser.display_name || existingUser.username || 'there';
-        const welcomeMsg = `Welcome back, ${welcomeUsername}! 👋`;
-        
-        // Close signup modal and open login modal with prefilled email
-        onClose();
-        
-        // Small delay for smooth modal transition
-        setTimeout(() => {
-          openLoginModalWithEmail(email, welcomeMsg);
-        }, 100);
-        
-        setLoading(false);
-        return;
-      }
-
-      // If user doesn't exist in our users table, let's also check Supabase Auth
-      console.log('🔍 handleEmailSubmit: Checking Supabase Auth for existing email...');
-      
-      // Try to sign up to see if the email already exists
-      const { data: signupData, error: signupError } = await supabase.auth.signUp({
+      console.log('📧 handleEmailSubmit: Calling supabase.auth.signUp with:', {
         email,
-        password: 'temp-password-123!', // We'll let them set real password after verification
+        redirectUrl,
+        siteUrl
+      });
+  
+      // Send magic link for email verification
+      const { data, error: signupError } = await supabase.auth.signUp({
+        email,
+        password: 'temp-password-will-be-changed', // Temporary password
         options: {
-          emailRedirectTo: `${getSiteUrl()}/?signup=verify`
+          emailRedirectTo: redirectUrl
         }
       });
-
-      console.log('📧 handleEmailSubmit: Supabase signup response:', {
-        data: signupData,
+  
+      console.log('📧 handleEmailSubmit: Supabase response:', {
+        data,
         error: signupError
       });
-
+  
       if (signupError) {
-        // Handle the specific case where user already exists
-        if (signupError.message.includes('already registered') || 
-            signupError.message.includes('already exists') ||
-            signupError.message.includes('User already registered')) {
-          
-          console.log('👋 handleEmailSubmit: Signup error indicates user exists, redirecting to login...');
-          
-          // Close signup and open login
-          onClose();
-          setTimeout(() => {
-            openLoginModalWithEmail(email, 'Welcome back! Please sign in with your password. 👋');
-          }, 100);
-          
-          setLoading(false);
-          return;
-        }
-        
-        console.log('❌ handleEmailSubmit: Other signup error:', signupError);
+        console.log('❌ handleEmailSubmit: Signup error:', signupError);
         setError(signupError.message);
       } else {
         console.log('✅ handleEmailSubmit: Success! Moving to verify step');
+        console.log('📧 handleEmailSubmit: User should check email at:', email);
         setSignupEmail(email);
         setSignupStep('verify');
       }
-
     } catch (err) {
       console.log('❌ handleEmailSubmit: Unexpected error:', err);
       setError('An unexpected error occurred');
     }
-
+  
     setLoading(false);
   };
 
@@ -519,14 +549,13 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
         {signupStep === 'verify' && (
           <div className="text-center">
             <p className="text-gray-600 mb-4">
-              We sent a magic link to<br />
+              We sent a confirmation link to<br />
               <strong>{signupEmail}</strong>
             </p>
             
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
               <p className="text-sm text-yellow-800">
-                Click the link in your email, then come back here.<br />
-                This page will magically update when you do!
+                Click the link in your email to complete sign up.
               </p>
             </div>
 
