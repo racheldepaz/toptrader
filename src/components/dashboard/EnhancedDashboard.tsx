@@ -368,170 +368,92 @@ export default function EnhancedDashboard() {
   // Critical Google Auth and Onboarding Flow Handler
   useEffect(() => {
     const handleSignupFlow = async () => {
-      console.log('📊 EnhancedDashboard: Handling signup flow', { 
-        user: user ? { id: user.id, email: user.email } : null, 
-        searchParams: searchParams?.toString(),
-        signupStep 
-      });
-  
-      if (!user) {
-        console.log('📊 EnhancedDashboard: No user, skipping signup flow');
-        return;
-      }
-  
-      const signupParam = searchParams?.get('signup');
+      console.log('📊 EnhancedDashboard: Handling signup flow', { user, searchParams, signupStep });
       
-      // Handle URL-based signup flow first (from email verification or explicit redirects)
-      if (signupParam === 'verify' && signupStep === 'email') {
-        console.log('📊 EnhancedDashboard: User just verified email, moving to password step');
-        openSignupModal();
-        setSignupStep('password');
-        return;
-      }
+      if (!user || loading) return;
       
-      if (signupParam === 'profile') {
+      const urlParams = new URLSearchParams(searchParams?.toString());
+      const signupParam = urlParams.get('signup');
+      
+      // If there's a signup URL parameter, handle it
+      if (signupParam) {
         console.log('📊 EnhancedDashboard: User needs to complete profile setup (from URL)');
         openSignupModal();
-        setSignupStep('profile');
-        return;
+        setSignupStep(signupParam as any);
+        return; // Don't do any further processing when URL param is present
       }
-  
-      // If no URL-based signup flow, check if user needs to complete profile
-      // (This catches new Google OAuth users and incomplete profiles)
-      if (!signupParam) {
+      
+      // Only check for auto-generated profiles if there's NO signup URL parameter
+      // and the modal is not already open
+      if (!isSignupModalOpen) {
         console.log('📊 EnhancedDashboard: No signup URL param, checking if user has completed profile');
-        
-        // First, let's log the user object in detail
-        console.log('🔍 DEBUG: Full user object:', user);
-        console.log('🔍 DEBUG: User email:', user?.email);
-        console.log('🔍 DEBUG: User email type:', typeof user?.email);
-        console.log('🔍 DEBUG: User metadata:', user?.user_metadata);
-        console.log('🔍 DEBUG: User app metadata:', user?.app_metadata);
-        console.log('🔍 DEBUG: User identities:', user?.identities);
         
         try {
           const { data: profile, error } = await supabase
             .from('users')
-            .select('*') // Get ALL fields to see what's actually stored
+            .select('*')
             .eq('id', user.id)
             .single();
-      
+  
           console.log('📊 EnhancedDashboard: User profile check result:', { profile, error });
-          
-          // Detailed profile logging
-          if (profile) {
-            console.log('🔍 DEBUG: Profile exists!');
-            console.log('🔍 DEBUG: Profile ID:', profile.id);
-            console.log('🔍 DEBUG: Profile username:', profile.username);
-            console.log('🔍 DEBUG: Profile username type:', typeof profile.username);
-            console.log('🔍 DEBUG: Profile display_name:', profile.display_name);
-            console.log('🔍 DEBUG: Profile display_name type:', typeof profile.display_name);
-            console.log('🔍 DEBUG: Profile email:', profile.email);
-            console.log('🔍 DEBUG: Profile created_at:', profile.created_at);
-            console.log('🔍 DEBUG: Full profile object:', profile);
+  
+          if (error && error.code === 'PGRST116') {
+            // No profile found - this is a completely new user
+            console.log('📊 EnhancedDashboard: No profile found, opening signup modal for profile step');
+            openSignupModal();
+            setSignupStep('profile');
+          } else if (profile && !profile.username) {
+            // Profile exists but no username
+            console.log('📊 EnhancedDashboard: Profile exists but no username, opening signup modal for profile step');
+            openSignupModal();
+            setSignupStep('profile');
+          } else if (profile && profile.username) {
+            // Profile has username - check if it was JUST created (within last 5 minutes)
+            // If it was just created, don't treat it as auto-generated
+            const profileCreatedAt = new Date(profile.created_at);
+            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+            const wasJustCreated = profileCreatedAt > fiveMinutesAgo;
             
-            // Let's check what Supabase might be auto-creating
-            if (profile.username) {
-              console.log('🔍 DEBUG: Username exists, checking if it looks auto-generated...');
-              console.log('🔍 DEBUG: Username === user.email?', profile.username === user?.email);
-              console.log('🔍 DEBUG: Username includes @?', profile.username.includes('@'));
-              console.log('🔍 DEBUG: Username includes .?', profile.username.includes('.'));
-              
-              if (user?.email) {
-                const emailPrefix = user.email.split('@')[0];
-                console.log('🔍 DEBUG: Email prefix:', emailPrefix);
-                console.log('🔍 DEBUG: Username === email prefix?', profile.username === emailPrefix);
-              }
+            console.log('🔍 Profile timing check:', {
+              createdAt: profileCreatedAt,
+              fiveMinutesAgo: fiveMinutesAgo,
+              wasJustCreated: wasJustCreated
+            });
+            
+            if (wasJustCreated) {
+              console.log('📊 EnhancedDashboard: Profile was just created, skipping auto-generated check');
+              return; // Don't force profile completion for newly created profiles
             }
             
-            // Check if this looks like a Google OAuth auto-created profile
+            // Only check for auto-generated usernames on older profiles
             const looksAutoGenerated = profile.username && (
               profile.username === user?.email || 
               profile.username.includes('@') ||
               (user?.email && profile.username === user.email.split('@')[0])
             );
             
-            console.log('🔍 DEBUG: Profile looks auto-generated?', looksAutoGenerated);
+            console.log('🔍 DEBUG: Auto-generation check for older profile:', {
+              username: profile.username,
+              userEmail: user?.email,
+              looksAutoGenerated: looksAutoGenerated
+            });
             
-            // Additional checks for Google OAuth patterns
-            if (user?.identities && user.identities.length > 0) {
-              console.log('🔍 DEBUG: User has identities:', user.identities);
-              const googleIdentity = user.identities.find(id => id.provider === 'google');
-              console.log('🔍 DEBUG: Google identity found?', !!googleIdentity);
-              if (googleIdentity) {
-                console.log('🔍 DEBUG: Google identity data:', googleIdentity);
-              }
+            if (looksAutoGenerated) {
+              console.log('📊 EnhancedDashboard: Profile has auto-generated username, opening signup modal for profile step');
+              openSignupModal();
+              setSignupStep('profile');
+            } else {
+              console.log('📊 EnhancedDashboard: User has valid profile, no action needed');
             }
           }
-      
-          if (error && error.code === 'PGRST116') {
-            // No profile found - this is a new user (likely from Google OAuth)
-            console.log('📊 EnhancedDashboard: No profile found, opening signup modal for profile step');
-            console.log('🔍 DEBUG: This appears to be a completely new user with no profile');
-            openSignupModal();
-            setSignupStep('profile');
-            
-            // Update URL to indicate profile step for consistency
-            if (typeof window !== 'undefined') {
-              const url = new URL(window.location.href);
-              url.searchParams.set('signup', 'profile');
-              window.history.replaceState({}, '', url.toString());
-            }
-          } else if (profile && !profile.username) {
-            // Profile exists but no username
-            console.log('📊 EnhancedDashboard: Profile exists but no username, opening signup modal for profile step');
-            console.log('🔍 DEBUG: Profile has no username field');
-            openSignupModal();
-            setSignupStep('profile');
-            
-            // Update URL to indicate profile step for consistency
-            if (typeof window !== 'undefined') {
-              const url = new URL(window.location.href);
-              url.searchParams.set('signup', 'profile');
-              window.history.replaceState({}, '', url.toString());
-            }
-          } else if (profile && profile.username && (
-            profile.username === user?.email || 
-            profile.username.includes('@') ||
-            (user?.email && profile.username === user.email.split('@')[0])
-          )) {
-            // Profile has username but it looks auto-generated from Google OAuth
-            console.log('📊 EnhancedDashboard: Profile has auto-generated username, opening signup modal for profile step');
-            console.log('🔍 DEBUG: Username appears to be auto-generated from Google OAuth');
-            console.log('🔍 DEBUG: Triggering profile completion flow');
-            openSignupModal();
-            setSignupStep('profile');
-            
-            // Update URL to indicate profile step for consistency
-            if (typeof window !== 'undefined') {
-              const url = new URL(window.location.href);
-              url.searchParams.set('signup', 'profile');
-              window.history.replaceState({}, '', url.toString());
-            }
-          } else if (profile && profile.username) {
-            console.log('📊 EnhancedDashboard: User profile complete');
-            console.log('🔍 DEBUG: Profile appears to be properly completed by user');
-            console.log('🔍 DEBUG: Username:', profile.username);
-            console.log('🔍 DEBUG: Display name:', profile.display_name);
-          } else {
-            console.log('📊 EnhancedDashboard: Unexpected profile state');
-            console.log('🔍 DEBUG: This is an unexpected state, logging for investigation');
-            console.log('🔍 DEBUG: Profile:', profile);
-            console.log('🔍 DEBUG: Error:', error);
-          }
-        } catch (err) {
-          console.log('📊 EnhancedDashboard: Error checking profile:', err);
-          console.log('🔍 DEBUG: Exception details:', err);
+        } catch (error) {
+          console.error('Error checking user profile:', error);
         }
-      }
-      
-      else {
-        console.log('📊 EnhancedDashboard: Not interfering with signup flow. Current step:', signupStep);
       }
     };
   
     handleSignupFlow();
-  }, [searchParams, user, openSignupModal, setSignupStep, signupStep]);
+  }, [user, loading, searchParams, isSignupModalOpen]);
 
   const loadTrades = useCallback(async () => {
     setLoading(true);
@@ -590,7 +512,7 @@ export default function EnhancedDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       {/* Main Content Area */}
       <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

@@ -225,78 +225,71 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
     setLoading(false);
   };
 
-  // Enhanced profile submission with better error handling
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim()) return;
-
+  
     setProfileLoading(true);
     setError('');
-
+  
     try {
-      console.log('👤 handleProfileSubmit: Creating user profile in database...');
+      console.log('👤 handleProfileSubmit: Creating user profile via RPC...');
+      console.log('👤 User ID:', user?.id);
+      console.log('👤 Username:', username.toLowerCase().trim());
       
-      // Check if username already exists first
-      const { data: existingUsername, error: usernameCheckError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('username', username.toLowerCase().trim())
-        .single();
-
-      if (existingUsername && !usernameCheckError) {
-        setError('Username already taken. Please choose another one.');
+      // Use the RPC function instead of direct table access
+      const { data, error: rpcError } = await supabase
+        .rpc('create_or_update_user_profile', {
+          p_username: username.toLowerCase().trim(),
+          p_display_name: displayName.trim() || username.trim()
+        });
+  
+      console.log('👤 RPC Response:', { data, error: rpcError });
+  
+      if (rpcError) {
+        console.error('❌ RPC Error:', rpcError);
+        setError('Failed to create profile: ' + rpcError.message);
         setProfileLoading(false);
         return;
       }
+  
+      // Parse the JSON response from the function
+      const result = data;
       
-      // Create or update user profile
-      const { data, error: profileError } = await supabase
-        .from('users')
-        .upsert({
-          id: user?.id,
-          email: user?.email, // Store email in users table for future lookups
-          username: username.toLowerCase().trim(),
-          display_name: displayName.trim() || username.trim(),
-          updated_at: new Date().toISOString()
-        });
-
-      console.log('👤 handleProfileSubmit: Profile creation response:', { data, error: profileError });
-
-      if (profileError) {
-        console.log('❌ handleProfileSubmit: Profile creation error:', profileError);
-        
-        if (profileError.message.includes('users_username_key') || 
-            profileError.message.includes('duplicate') ||
-            profileError.message.includes('unique constraint')) {
-          setError('Username already taken. Please choose another one.');
-        } else {
-          setError(profileError.message);
-        }
-      } else {
-        console.log('✅ handleProfileSubmit: Success! Moving to brokerage step');
-        
-        updateProfileCache({
-          username: username.toLowerCase().trim(),
-          display_name: displayName.trim() || username.trim(),
-        });
-        refreshProfile();
-        
-        if (typeof window !== 'undefined') {
-          const url = new URL(window.location.href);
-          url.searchParams.delete('signup');
-          window.history.replaceState({}, '', url.toString());
-          console.log('👤 handleProfileSubmit: Cleared URL parameters');
-        }
-        
-        setSignupStep('brokerage');
+      if (!result.success) {
+        console.error('❌ Profile creation failed:', result.error);
+        setError(result.error);
+        setProfileLoading(false);
+        return;
       }
+  
+      console.log('✅ Profile created successfully:', result);
+  
+      // Update the profile cache
+      updateProfileCache({
+        username: result.username,
+        display_name: result.display_name,
+      });
+      refreshProfile();
+      
+      // Clear the URL parameters to prevent conflicts
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('signup');
+        window.history.replaceState({}, '', url.toString());
+        console.log('👤 handleProfileSubmit: Cleared URL parameters');
+      }
+      
+      setSignupStep('brokerage');
+  
     } catch (err) {
       console.log('❌ handleProfileSubmit: Unexpected error:', err);
       setError('An unexpected error occurred');
     }
-
+  
     setProfileLoading(false);
   };
+
 
   const handleSkipBrokerage = () => {
     console.log('🏦 handleSkipBrokerage: User skipped brokerage connection');
