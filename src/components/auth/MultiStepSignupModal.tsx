@@ -67,68 +67,27 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
 
   // Check if we're coming back from email verification
   useEffect(() => {
-    const handleAuthToken = async () => {
-      // Check if we have auth tokens in the URL fragment
-      if (typeof window !== 'undefined' && window.location.hash) {
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-        const type = hashParams.get('type');
-        
-        console.log('🔗 Auth token found in URL:', { 
-          hasAccessToken: !!accessToken, 
-          hasRefreshToken: !!refreshToken, 
-          type 
-        });
-        
-        if (accessToken && refreshToken && type === 'signup') {
-          console.log('✅ Email confirmation successful, setting session...');
-          
-          try {
-            // Set the session using the tokens
-            const { data, error } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken
-            });
-            
-            console.log('🔐 Session set result:', { 
-              user: data.user ? { id: data.user.id, email: data.user.email } : null,
-              error 
-            });
-            
-            if (!error && data.user) {
-              // Clean up the URL
-              window.history.replaceState({}, '', window.location.pathname + '?signup=verify');
-              
-              // Move to password step
-              console.log('🔐 Moving to password step after email verification');
-              setSignupStep('password');
-            } else {
-              console.error('❌ Failed to set session:', error);
-              setError('Failed to verify email. Please try again.');
-            }
-          } catch (err) {
-            console.error('❌ Error setting session:', err);
-            setError('Failed to verify email. Please try again.');
-          }
-        }
-      }
-    };
+    console.log('🔄 useEffect: Auth state monitor', { 
+      user: user ? { id: user.id, email: user.email } : null, 
+      signupStep,
+      isOpen
+    });
     
-    // Run immediately when component mounts
-    handleAuthToken();
+    // Only proceed if modal is open and we have a user
+    if (!isOpen || !user) return;
     
-    // Also run when the location hash changes (in case user navigates back/forward)
-    const handleHashChange = () => {
-      handleAuthToken();
-    };
-    
-    window.addEventListener('hashchange', handleHashChange);
-    
-    return () => {
-      window.removeEventListener('hashchange', handleHashChange);
-    };
-  }, []); // Empty dependency array - only run once on mount
+    // If we have a user and we're in the verify step, move to password step
+    if (signupStep === 'verify') {
+      console.log('✅ Email verified! User exists, moving to password step');
+      // Use setTimeout to avoid state update conflicts
+      setTimeout(() => {
+        setSignupStep('password');
+      }, 100);
+    }
+  }, [user, signupStep, isOpen, setSignupStep]);
+
+
+  
   
 
   useEffect(() => {
@@ -146,58 +105,57 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
 
   // Enhanced email submission with existing user detection
   const handleEmailSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('📧 handleEmailSubmit: Starting email submission for:', email);
+  e.preventDefault();
+  console.log('📧 handleEmailSubmit: Starting email submission for:', email);
+  
+  if (!email) {
+    console.log('❌ handleEmailSubmit: No email provided');
+    return;
+  }
+
+  setLoading(true);
+  setError('');
+
+  try {
+    const siteUrl = getSiteUrl();
+    // FIXED: Use the auth callback route
+    const redirectUrl = `${siteUrl}/auth/callback`;
     
-    if (!email) {
-      console.log('❌ handleEmailSubmit: No email provided');
-      return;
-    }
-  
-    setLoading(true);
-    setError('');
-  
-    try {
-      const siteUrl = getSiteUrl();
-      // Change this to redirect to the main page with verify param
-      const redirectUrl = `${siteUrl}/?signup=verify`;
-      
-      console.log('📧 handleEmailSubmit: Calling supabase.auth.signUp with:', {
-        email,
-        redirectUrl,
-        siteUrl
-      });
-  
-      // Send magic link for email verification
-      const { data, error: signupError } = await supabase.auth.signUp({
-        email,
-        password: 'temp-password-will-be-changed', // Temporary password
-        options: {
-          emailRedirectTo: redirectUrl
-        }
-      });
-  
-      console.log('📧 handleEmailSubmit: Supabase response:', {
-        data,
-        error: signupError
-      });
-  
-      if (signupError) {
-        console.log('❌ handleEmailSubmit: Signup error:', signupError);
-        setError(signupError.message);
-      } else {
-        console.log('✅ handleEmailSubmit: Success! Moving to verify step');
-        console.log('📧 handleEmailSubmit: User should check email at:', email);
-        setSignupEmail(email);
-        setSignupStep('verify');
+    console.log('📧 handleEmailSubmit: Calling supabase.auth.signUp with:', {
+      email,
+      redirectUrl,
+      siteUrl
+    });
+
+    const { data, error: signupError } = await supabase.auth.signUp({
+      email,
+      password: 'temp-password-will-be-changed',
+      options: {
+        emailRedirectTo: redirectUrl
       }
-    } catch (err) {
-      console.log('❌ handleEmailSubmit: Unexpected error:', err);
-      setError('An unexpected error occurred');
+    });
+
+    console.log('📧 handleEmailSubmit: Supabase response:', {
+      data,
+      error: signupError
+    });
+
+    if (signupError) {
+      console.log('❌ handleEmailSubmit: Signup error:', signupError);
+      setError(signupError.message);
+    } else {
+      console.log('✅ handleEmailSubmit: Success! Moving to verify step');
+      setSignupEmail(email);
+      setSignupStep('verify');
     }
-  
-    setLoading(false);
-  };
+  } catch (err) {
+    console.log('❌ handleEmailSubmit: Unexpected error:', err);
+    setError('An unexpected error occurred');
+  }
+
+  setLoading(false);
+};
+
 
   const validatePassword = (pass: string) => {
     const errors = [];
@@ -216,28 +174,39 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
       setPasswordError(`Password must include: ${passwordErrors.join(', ')}`);
       return;
     }
-
+  
     setLoading(true);
     setPasswordError('');
-
+  
     try {
       console.log('🔐 handlePasswordSubmit: Updating user password...');
+      
+      // First, make sure we have a current user
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !currentUser) {
+        console.error('❌ handlePasswordSubmit: No authenticated user:', userError);
+        setPasswordError('Authentication error. Please try signing up again.');
+        setLoading(false);
+        return;
+      }
       
       const { data, error: updateError } = await supabase.auth.updateUser({
         password: password
       });
-
+  
       console.log('🔐 handlePasswordSubmit: Password update response:', {
         data,
         error: updateError
       });
-
+  
       if (updateError) {
         console.log('❌ handlePasswordSubmit: Password update error:', updateError);
         setPasswordError(updateError.message);
       } else {
         console.log('✅ handlePasswordSubmit: Success! Moving to profile step');
         
+        // Clean up URL parameters
         if (typeof window !== 'undefined') {
           const url = new URL(window.location.href);
           url.searchParams.delete('signup');
@@ -245,13 +214,16 @@ export default function MultiStepSignupModal({ isOpen, onClose }: MultiStepSignu
           console.log('🔐 handlePasswordSubmit: Cleared URL parameters');
         }
         
-        setSignupStep('profile');
+        // Use setTimeout to prevent state conflicts
+        setTimeout(() => {
+          setSignupStep('profile');
+        }, 100);
       }
     } catch (err) {
       console.log('❌ handlePasswordSubmit: Unexpected error:', err);
       setPasswordError('An unexpected error occurred');
     }
-
+  
     setLoading(false);
   };
 

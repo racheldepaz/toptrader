@@ -1,3 +1,5 @@
+// Update your useSupabaseAuth.ts with better error handling:
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -10,28 +12,61 @@ export const useSupabaseAuth = () => {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  console.log('🔐 useSupabaseAuth: Hook called, current state:', { user: user ? { id: user.id, email: user.email } : null, loading });
+  console.log('🔐 useSupabaseAuth: Hook called, current state:', { 
+    user: user ? { id: user.id, email: user.email } : null, 
+    loading 
+  });
 
   useEffect(() => {
     console.log('🔐 useSupabaseAuth: useEffect running - getting initial session');
     
-    // Get initial session
+    // Get initial session with proper error handling
     const getInitialSession = async () => {
-      console.log('🔐 useSupabaseAuth: Calling supabase.auth.getSession()');
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      console.log('🔐 useSupabaseAuth: Initial session response:', { 
-        session: session ? { user: { id: session.user.id, email: session.user.email } } : null, 
-        error 
-      });
-      
-      setUser(session?.user ?? null);
-      setLoading(false);
+      try {
+        console.log('🔐 useSupabaseAuth: Calling supabase.auth.getSession()');
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('🔐 useSupabaseAuth: Session error:', error);
+          
+          // Handle specific auth errors
+          if (error.message.includes('Invalid Refresh Token') || 
+              error.message.includes('Refresh Token Not Found')) {
+            console.log('🔐 useSupabaseAuth: Invalid/missing refresh token, clearing session');
+            
+            // Clear the invalid session
+            await supabase.auth.signOut();
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+        }
+        
+        console.log('🔐 useSupabaseAuth: Initial session response:', { 
+          session: session ? { user: { id: session.user.id, email: session.user.email } } : null, 
+          error 
+        });
+        
+        setUser(session?.user ?? null);
+        setLoading(false);
+      } catch (err) {
+        console.error('🔐 useSupabaseAuth: Unexpected error getting session:', err);
+        
+        // Clear everything on unexpected errors
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutErr) {
+          console.error('🔐 Error during cleanup signOut:', signOutErr);
+        }
+        
+        setUser(null);
+        setLoading(false);
+      }
     };
 
     getInitialSession();
 
-    // Listen for auth changes
+    // Listen for auth changes with error handling
     console.log('🔐 useSupabaseAuth: Setting up auth state change listener');
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -48,9 +83,14 @@ export const useSupabaseAuth = () => {
           awardDailyLoginBonus(session.user.id)
         }
         
+        // Handle token refresh errors
+        if (event === 'TOKEN_REFRESHED' && !session) {
+          console.log('🔐 useSupabaseAuth: Token refresh failed, user signed out');
+          setUser(null);
+        }
+        
         if (event === 'SIGNED_IN') {
-          console.log('🔐 useSupabaseAuth: User signed in, refreshing router');
-          // Optionally refresh the page or redirect
+          console.log('🔐 useSupabaseAuth: User signed in');
           router.refresh();
         }
       }
@@ -64,55 +104,74 @@ export const useSupabaseAuth = () => {
 
   const login = async (email: string, password: string) => {
     console.log('🔐 useSupabaseAuth: Login attempt for:', email);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    console.log('🔐 useSupabaseAuth: Login response:', { data, error });
-    return { data, error };
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      console.log('🔐 useSupabaseAuth: Login response:', { data, error });
+      return { data, error };
+    } catch (err) {
+      console.error('🔐 useSupabaseAuth: Login error:', err);
+      return { data: null, error: err };
+    }
   };
 
   const signup = async (email: string, password: string, username: string, displayName?: string) => {
     console.log('🔐 useSupabaseAuth: Signup attempt for:', email, 'username:', username);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
 
-    console.log('🔐 useSupabaseAuth: Signup response:', { data, error });
+      console.log('🔐 useSupabaseAuth: Signup response:', { data, error });
 
-    if (data.user && !error) {
-      console.log('🔐 useSupabaseAuth: Creating user profile in database');
-      // Create user profile
-      const { error: profileError } = await supabase
-        .from('users')
-        .insert({
-          id: data.user.id,
-          username,
-          display_name: displayName || username,
-        });
-      
-      if (profileError) {
-        console.error('🔐 useSupabaseAuth: Error creating user profile:', profileError);
-      } else {
-        console.log('🔐 useSupabaseAuth: User profile created successfully');
+      if (data.user && !error) {
+        console.log('🔐 useSupabaseAuth: Creating user profile in database');
+        // Create user profile
+        const { error: profileError } = await supabase
+          .from('users')
+          .insert({
+            id: data.user.id,
+            username,
+            display_name: displayName || username,
+          });
+        
+        if (profileError) {
+          console.error('🔐 useSupabaseAuth: Error creating user profile:', profileError);
+        } else {
+          console.log('🔐 useSupabaseAuth: User profile created successfully');
+        }
       }
-    }
 
-    return { data, error };
+      return { data, error };
+    } catch (err) {
+      console.error('🔐 useSupabaseAuth: Signup error:', err);
+      return { data: null, error: err };
+    }
   };
 
   const logout = async () => {
     console.log('🔐 useSupabaseAuth: Logout attempt');
-    const { error } = await supabase.auth.signOut();
-    if (!error) {
-      setUser(null);
-      router.push('/');
-      console.log('🔐 useSupabaseAuth: Logout successful');
-    } else {
-      console.log('🔐 useSupabaseAuth: Logout error:', error);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (!error) {
+        setUser(null);
+        
+        // Clear any localStorage fallbacks
+        localStorage.removeItem('isAuthenticated');
+        
+        router.push('/');
+        console.log('🔐 useSupabaseAuth: Logout successful');
+      } else {
+        console.log('🔐 useSupabaseAuth: Logout error:', error);
+      }
+      return { error };
+    } catch (err) {
+      console.error('🔐 useSupabaseAuth: Logout error:', err);
+      return { error: err };
     }
-    return { error };
   };
 
   const awardDailyLoginBonus = async (userId: string) => {
@@ -128,10 +187,7 @@ export const useSupabaseAuth = () => {
       
       if (data === true) {
         console.log('🎉 Daily login bonus awarded! (+5 XP)')
-        // Optional: You could trigger a notification here
       }
-      // If data === false, user already got bonus today (no notification needed)
-      
     } catch (error) {
       console.error('Error in awardDailyLoginBonus:', error)
     }

@@ -1,21 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import LandingPage from '@/components/landing/LandingPage';
 import EnhancedDashboard from '@/components/dashboard/EnhancedDashboard';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
 
 export default function HomePage() {
-  const { isAuthenticated, loading } = useSupabaseAuth();
-  const [showFallback, setShowFallback] = useState(false);
+  const { isAuthenticated, loading, user } = useSupabaseAuth();
 
-  // Fallback to localStorage auth if Supabase auth fails
-  useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      const localAuth = localStorage.getItem('isAuthenticated') === 'true';
-      setShowFallback(localAuth);
-    }
-  }, [loading, isAuthenticated]);
+  console.log('🏠 HomePage: Auth state:', { isAuthenticated, loading, hasUser: !!user });
 
   if (loading) {
     return (
@@ -28,10 +20,13 @@ export default function HomePage() {
     );
   }
 
-  // Show dashboard if authenticated via Supabase OR localStorage fallback
-  if (isAuthenticated || showFallback) {
+  // ONLY show dashboard if properly authenticated via Supabase
+  if (isAuthenticated && user) {
+    console.log('🏠 HomePage: User authenticated, showing dashboard');
     return <EnhancedDashboard />;
   }
 
+  // Show landing page for unauthenticated users
+  console.log('🏠 HomePage: User not authenticated, showing landing page');
   return <LandingPage />;
 }
