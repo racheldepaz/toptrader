@@ -107,7 +107,7 @@ export default function EnhancedLoginModal({ isOpen, onClose }: EnhancedLoginMod
       const { error: loginError } = await login(email, password);
       
       if (loginError) {
-        setError(loginError.message);
+        setError((loginError as Error).message);
       } else {
         handleClose();
       }
