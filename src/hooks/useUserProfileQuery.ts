@@ -1,7 +1,7 @@
-// src/hooks/useUserProfileQuery.ts
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
+import { useSupabaseAuth } from '@/context/AuthContext'; // Updated import
 import { supabase } from '@/lib/supabase';
+import { useMemo } from 'react';
 
 interface UserProfile {
   id: string;
@@ -14,20 +14,24 @@ interface UserProfile {
   is_public?: boolean;
 }
 
-// Renamed to avoid conflict
 export const useUserProfileQuery = () => {
-  const { user: authUser, isAuthenticated } = useSupabaseAuth();
+  const { user: authUser, isAuthenticated, loading: authLoading } = useSupabaseAuth();
   const queryClient = useQueryClient();
+
+  // Memoize the query key to prevent unnecessary re-renders
+  const queryKey = useMemo(() => ['userProfile', authUser?.id], [authUser?.id]);
 
   const {
     data: profile,
-    isLoading: loading,
+    isLoading: profileLoading,
     error,
     refetch
   } = useQuery({
-    queryKey: ['userProfile', authUser?.id],
+    queryKey,
     queryFn: async (): Promise<UserProfile | null> => {
       if (!authUser) return null;
+
+      console.log('🔍 useUserProfileQuery: Fetching profile for user:', authUser.id);
 
       const { data, error } = await supabase
         .from('users')
@@ -36,10 +40,11 @@ export const useUserProfileQuery = () => {
         .single();
 
       if (error && error.code !== 'PGRST116') {
+        console.error('🔍 useUserProfileQuery: Error fetching profile:', error);
         throw error;
       }
 
-      return {
+      const profileData = {
         id: authUser.id,
         email: authUser.email,
         username: data?.username,
@@ -49,31 +54,39 @@ export const useUserProfileQuery = () => {
         trading_style: data?.trading_style,
         is_public: data?.is_public
       };
+
+      console.log('🔍 useUserProfileQuery: Profile data retrieved:', profileData);
+      return profileData;
     },
-    enabled: !!authUser,
+    enabled: !!authUser && !authLoading, // Only run when auth is resolved and user exists
+    staleTime: 5 * 60 * 1000, // Consider profile data fresh for 5 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
   });
 
   // Helper function to invalidate and refetch
   const refreshProfile = () => {
-    queryClient.invalidateQueries({ queryKey: ['userProfile', authUser?.id] });
+    queryClient.invalidateQueries({ queryKey });
   };
 
   // Helper function to update cache optimistically
   const updateProfileCache = (updates: Partial<UserProfile>) => {
-    queryClient.setQueryData(['userProfile', authUser?.id], (old: UserProfile | null) => 
+    queryClient.setQueryData(queryKey, (old: UserProfile | null) => 
       old ? { ...old, ...updates } : null
     );
   };
 
-  return {
+  // Memoize return value to prevent unnecessary re-renders
+  const returnValue = useMemo(() => ({
     profile,
-    loading,
+    loading: authLoading || profileLoading,
     error: error as Error | null,
     isAuthenticated,
     hasCompletedProfile: profile?.username ? true : false,
     refreshProfile,
     updateProfileCache,
-  };
+  }), [profile, authLoading, profileLoading, error, isAuthenticated, refreshProfile, updateProfileCache]);
+
+  return returnValue;
 };
 
 // Helper hook for global refresh (optional)

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { TradeComment } from '@/lib/types';
 import { deleteTradeComment } from '@/lib/api/social';
-import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
+import { useSupabaseAuth } from '@/context/AuthContext';
 
 interface CommentItemProps {
   comment: TradeComment;

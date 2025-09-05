@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
+import { useSupabaseAuth } from "@/context/AuthContext"
 import { supabase } from '@/lib/supabase';
 
 interface SnapTradeUser {
