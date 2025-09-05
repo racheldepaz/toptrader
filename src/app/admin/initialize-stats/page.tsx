@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
+import { useSupabaseAuth } from "@/context/AuthContext"
 import { RefreshCw } from 'lucide-react';
 
 export default function InitializeStatsPage() {

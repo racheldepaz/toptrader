@@ -6,7 +6,7 @@ import Link from "next/link"
 import { useState } from "react"
 import { Search } from "lucide-react"
 import { useAuthModal } from "@/context/AuthModalContext"
-import { useSupabaseAuth } from "@/hooks/useSupabaseAuth"
+import { useSupabaseAuth } from '@/context/AuthContext';
 import { useUserProfileQuery } from "@/hooks/useUserProfileQuery"
 import UserProfileDropdown from "./UserProfileDropdown"
 

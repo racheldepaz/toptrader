@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
+import { useSupabaseAuth } from '@/context/AuthContext';
 import { useAuthModal } from '@/context/AuthModalContext';
 import { useSnapTrade } from '@/hooks/useSnapTrade';
 import { useUserProfileQuery } from '@/hooks/useUserProfileQuery';

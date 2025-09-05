@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, MessageCircle } from 'lucide-react';
-import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
+import { useSupabaseAuth } from '@/context/AuthContext';
 import EnhancedTradeCard from '@/components/EnhancedTradeCard';
 import CommentItem from '@/components/CommentItem';
 import ViralShareButton from '@/components/ViralShareButton';

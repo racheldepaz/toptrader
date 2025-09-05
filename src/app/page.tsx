@@ -2,7 +2,7 @@
 
 import LandingPage from '@/components/landing/LandingPage';
 import EnhancedDashboard from '@/components/dashboard/EnhancedDashboard';
-import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
+import { useSupabaseAuth } from "@/context/AuthContext"
 
 export default function HomePage() {
   const { isAuthenticated, loading, user } = useSupabaseAuth();

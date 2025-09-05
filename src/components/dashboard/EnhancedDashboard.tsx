@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
+import { useSupabaseAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useAuthModal } from '@/context/AuthModalContext';
 import MultiStepSignupModal from '@/components/auth/MultiStepSignupModal';
