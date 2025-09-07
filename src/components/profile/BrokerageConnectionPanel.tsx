@@ -48,6 +48,7 @@ interface BrokerageConnectionPanelProps {
   onConnect?: () => void
   onRefresh?: (id: string) => void  
   onDisconnect?: (id: string) => void 
+  loading?: boolean  
 }
 
 export default function BrokerageConnectionPanel({
@@ -55,6 +56,7 @@ export default function BrokerageConnectionPanel({
   onConnect,
   onRefresh,
   onDisconnect,
+  loading,
 }: BrokerageConnectionPanelProps) {
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
 
@@ -105,10 +107,24 @@ export default function BrokerageConnectionPanel({
           <h3 className="text-lg font-semibold text-gray-900">Brokerage Connections</h3>
           {connections.length > 0 && (<button 
             onClick={onConnect}
-            className="flex items-center space-x-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+            disabled={loading}
+            className={`flex items-center space-x-2 px-3 py-2 text-white text-sm font-medium rounded-lg transition-colors ${
+              loading 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
           >
-            <Plus className="w-4 h-4" />
-            <span>Connect New</span>
+            {loading ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Connecting...</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4" />
+                <span>Connect New</span>
+              </>
+            )}
           </button>)}
         </div>
       </div>
@@ -250,10 +266,24 @@ export default function BrokerageConnectionPanel({
             </p>
             <button 
               onClick={onConnect}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors mx-auto"
+              disabled={loading}
+              className={`flex items-center space-x-2 px-4 py-2 font-medium rounded-lg transition-colors mx-auto ${
+                loading
+                  ? 'bg-gray-400 text-white cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
             >
-              <Plus className="w-4 h-4" />
-              <span>Connect Your First Account</span>
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Connecting...</span>
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  <span>Connect Your First Account</span>
+                </>
+              )}
             </button>
           </div>
         )}

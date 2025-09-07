@@ -1,5 +1,6 @@
 "use client"
 
+import { useSnapTrade } from "@/hooks/useSnapTrade"
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
@@ -77,6 +78,9 @@ export default function UserProfilePage() {
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>("month")
   const [allStats, setAllStats] = useState<any>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const { initializeSnapTradeFlow, loading: snapTradeLoading, error: snapTradeError, clearError } = useSnapTrade();
+  const [connectingBrokerage, setConnectingBrokerage] = useState(false);
+
   
   // New state for integrated components
   const [levelData, setLevelData] = useState<LevelData | null>(null)
@@ -91,6 +95,35 @@ export default function UserProfilePage() {
       fetchUserProfile()
     }
   }, [username, currentUser])
+
+  useEffect(() => {
+    console.log('🔄 useEffect[success-callback]: Checking for SnapTrade return...');
+    
+    // Check if user just returned from SnapTrade connection
+    const urlParams = new URLSearchParams(window.location.search);
+    const wasConnected = urlParams.get('connected');
+    
+    console.log('🔄 useEffect[success-callback]: URL params check:', {
+      wasConnected,
+      profileId: profile?.id,
+      fullUrl: window.location.href
+    });
+    
+    if (wasConnected === 'true' && profile?.id) {
+      console.log('🔄 useEffect[success-callback]: ✅ Successful connection return detected!');
+      
+      // Clean up URL parameter immediately
+      const url = new URL(window.location.href);
+      url.searchParams.delete('connected');
+      window.history.replaceState({}, '', url.toString());
+      console.log('🔄 useEffect[success-callback]: URL cleaned, starting processing...');
+      
+      // Process the new connection (this will handle all the saving)
+      processNewConnection();
+    } else if (wasConnected === 'true' && !profile?.id) {
+      console.log('🔄 useEffect[success-callback]: ⚠️ Success detected but no profile ID available yet');
+    }
+  }, [profile?.id]);
 
   const fetchUserProfile = async () => {
     try {
@@ -648,10 +681,333 @@ const showXPGainNotification = (xpGained: number, description: string) => {
     })
   }
   // Handle new component actions
-  const handleConnectBrokerage = () => {
-    // TODO: Implement brokerage connection flow
-    console.log("Connect new brokerage account")
-  }
+  const handleConnectBrokerage = async () => {
+    console.log('🏦 handleConnectBrokerage: ============================================');
+    console.log('🏦 handleConnectBrokerage: Starting brokerage connection flow for profile page');
+    console.log('🏦 handleConnectBrokerage: User:', { username, profileId: profile?.id });
+    
+    setConnectingBrokerage(true);
+    clearError();
+  
+    try {
+      // Get the current profile page URL for redirect
+      const currentUrl = `${window.location.origin}/user/${username}`;
+      console.log('🏦 handleConnectBrokerage: Profile redirect URL:', currentUrl);
+  
+      // Initialize SnapTrade flow with profile-specific redirect
+      console.log('🏦 handleConnectBrokerage: Calling initializeSnapTradeFlow...');
+      const connectionUrl = await initializeSnapTradeFlow(currentUrl);
+      
+      if (connectionUrl) {
+        console.log('🏦 handleConnectBrokerage: ✅ Connection URL generated successfully');
+        console.log('🏦 handleConnectBrokerage: URL:', connectionUrl);
+        
+        // Open connection portal in popup window (matching signup flow)
+        console.log('🏦 handleConnectBrokerage: Opening popup window...');
+        const popup = window.open(
+          connectionUrl, 
+          'snaptrade-connect', 
+          'width=600,height=700,scrollbars=yes,resizable=yes'
+        );
+  
+        if (!popup) {
+          console.error('🏦 handleConnectBrokerage: ❌ Failed to open popup window');
+          alert('Please allow popups for this site to connect your brokerage account.');
+          setConnectingBrokerage(false);
+          return;
+        }
+  
+        console.log('🏦 handleConnectBrokerage: ✅ Popup opened successfully');
+        console.log('🏦 handleConnectBrokerage: Starting popup monitoring...');
+  
+        // Monitor popup for completion
+        const checkConnection = setInterval(async () => {
+          try {
+            // Check if popup was closed
+            if (popup.closed) {
+              clearInterval(checkConnection);
+              console.log('🏦 handleConnectBrokerage: 🔔 Popup closed, checking for success');
+              
+              // Small delay to allow URL parameter processing
+              setTimeout(async () => {
+                // Check if we have the success parameter
+                const urlParams = new URLSearchParams(window.location.search);
+                const wasConnected = urlParams.get('connected');
+                
+                console.log('🏦 handleConnectBrokerage: URL params check:', { 
+                  wasConnected, 
+                  fullUrl: window.location.href 
+                });
+                
+                if (wasConnected === 'true') {
+                  console.log('🏦 handleConnectBrokerage: ✅ SUCCESS! Connection parameter detected');
+                  console.log('🏦 handleConnectBrokerage: Starting post-connection processing...');
+                  
+                  // Clean up URL parameter first
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('connected');
+                  window.history.replaceState({}, '', url.toString());
+                  console.log('🏦 handleConnectBrokerage: URL cleaned:', url.toString());
+                  
+                  // Process the new connection and save to database
+                  await processNewConnection();
+                  
+                } else {
+                  console.log('🏦 handleConnectBrokerage: ⚠️ Popup closed without success parameter');
+                  console.log('🏦 handleConnectBrokerage: User may have cancelled or connection failed');
+                }
+                
+                setConnectingBrokerage(false);
+                console.log('🏦 handleConnectBrokerage: Connection process completed');
+              }, 500);
+            }
+          } catch (error) {
+            console.error('🏦 handleConnectBrokerage: ❌ Error checking popup status:', error);
+            clearInterval(checkConnection);
+            setConnectingBrokerage(false);
+          }
+        }, 1000);
+  
+        // Safety timeout to clean up if popup doesn't close
+        setTimeout(() => {
+          clearInterval(checkConnection);
+          if (!popup.closed) {
+            console.log('🏦 handleConnectBrokerage: ⏰ Connection timeout reached (5 minutes)');
+            popup.close();
+          }
+          setConnectingBrokerage(false);
+        }, 300000); // 5 minutes timeout
+  
+      } else {
+        console.error('🏦 handleConnectBrokerage: ❌ Failed to generate connection URL');
+        console.error('🏦 handleConnectBrokerage: Check SnapTrade credentials and API status');
+        alert('Failed to initialize brokerage connection. Please try again.');
+        setConnectingBrokerage(false);
+      }
+  
+    } catch (error) {
+      console.error('🏦 handleConnectBrokerage: ❌ Unexpected error:', error);
+      console.error('🏦 handleConnectBrokerage: Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+      alert('An error occurred while connecting your brokerage account. Please try again.');
+      setConnectingBrokerage(false);
+    }
+  
+    console.log('🏦 handleConnectBrokerage: ============================================');
+  };
+
+  const processNewConnection = async () => {
+    console.log('💾 processNewConnection: ==========================================');
+    console.log('💾 processNewConnection: Starting connection data processing...');
+    
+    try {
+      if (!profile?.id) {
+        console.error('💾 processNewConnection: ❌ No profile ID available');
+        alert('Profile information not available. Please refresh the page and try again.');
+        return;
+      }
+  
+      // Get user's SnapTrade credentials
+      console.log('💾 processNewConnection: Fetching SnapTrade credentials...');
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('snaptrade_user_id, snaptrade_user_secret')
+        .eq('id', profile.id)
+        .single();
+  
+      if (userError || !userData?.snaptrade_user_id || !userData?.snaptrade_user_secret) {
+        console.error('💾 processNewConnection: ❌ No SnapTrade credentials found');
+        alert('Failed to retrieve SnapTrade credentials. Please try connecting again.');
+        return;
+      }
+  
+      const snapTradeUserId = userData.snaptrade_user_id;
+      const snapTradeUserSecret = userData.snaptrade_user_secret;
+      console.log('💾 processNewConnection: ✅ SnapTrade credentials found:', snapTradeUserId);
+  
+      // Step 1: Fetch all connections from SnapTrade
+      console.log('💾 processNewConnection: 📋 Fetching connections from SnapTrade...');
+      const connectionsResponse = await fetch('/api/snaptrade/list-connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: snapTradeUserId,
+          userSecret: snapTradeUserSecret
+        })
+      });
+  
+      if (!connectionsResponse.ok) {
+        throw new Error(`Failed to fetch connections: ${connectionsResponse.status}`);
+      }
+  
+      const connections = await connectionsResponse.json();
+      console.log('💾 processNewConnection: ✅ Connections fetched:', {
+        count: connections.length,
+        connections: connections.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          type: c.type,
+          brokerageName: c.brokerage?.name,
+          brokerageDisplayName: c.brokerage?.display_name
+        }))
+      });
+  
+      // Step 2: Store each connection using the updated API route WITH FULL DATA
+      console.log('💾 processNewConnection: 💿 Storing connections with complete brokerage data...');
+      let connectionsStored = 0;
+      
+      for (const connection of connections) {
+        try {
+          console.log('💾 processNewConnection: 📤 Saving connection with full brokerage data:', {
+            id: connection.id,
+            name: connection.name,
+            brokerageName: connection.brokerage?.name,
+            hasLogo: !!connection.brokerage?.aws_s3_logo_url
+          });
+          
+          // KEY CHANGE: Pass the full connection data including brokerage information
+          const requestBody = {
+            userId: profile.id,  // Our database user ID
+            authorizationId: connection.id,  // SnapTrade connection ID
+            brokerageName: connection.name || 'Unknown Brokerage',
+            connectionType: 'read',
+            connectionData: connection  // 🔥 PASS FULL CONNECTION DATA HERE
+          };
+          
+          console.log('💾 processNewConnection: Request includes full brokerage data:', {
+            hasBrokerageInfo: !!requestBody.connectionData.brokerage,
+            brokerageName: requestBody.connectionData.brokerage?.name,
+            brokerageSlug: requestBody.connectionData.brokerage?.slug,
+            hasLogos: !!(requestBody.connectionData.brokerage?.aws_s3_logo_url)
+          });
+          
+          const saveConnectionResponse = await fetch('/api/snaptrade/save-connection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+          });
+  
+          console.log('💾 processNewConnection: Save connection API response:', {
+            connectionId: connection.id,
+            status: saveConnectionResponse.status,
+            ok: saveConnectionResponse.ok
+          });
+  
+          if (saveConnectionResponse.ok) {
+            const result = await saveConnectionResponse.json();
+            console.log('💾 processNewConnection: ✅ Connection stored with brokerage data:', {
+              connectionId: connection.id,
+              resultBrokerageName: result.data?.brokerage_name,
+              resultDisplayName: result.data?.brokerage_display_name,
+              hasLogo: !!result.data?.brokerage_logo_url
+            });
+            connectionsStored++;
+          } else {
+            const errorResponse = await saveConnectionResponse.text();
+            console.error('💾 processNewConnection: ❌ API error for connection:', connection.id);
+            console.error('💾 processNewConnection: API error response:', errorResponse);
+          }
+        } catch (error) {
+          console.error('💾 processNewConnection: ❌ Exception saving connection:', connection.id, error);
+        }
+      }
+  
+      // Continue with accounts saving (same as before)...
+      console.log('💾 processNewConnection: 📊 Fetching accounts from SnapTrade...');
+      const accountsResponse = await fetch('/api/snaptrade/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: snapTradeUserId,
+          userSecret: snapTradeUserSecret
+        })
+      });
+  
+      if (accountsResponse.ok) {
+        const accounts = await accountsResponse.json();
+        console.log('💾 processNewConnection: ✅ Accounts fetched:', accounts.length);
+        
+        // Get connections from database
+        const connectionsInDb = await supabase
+          .from('snaptrade_connections')
+          .select('id, snaptrade_connection_id')
+          .eq('snaptrade_user_id', snapTradeUserId);
+  
+        if (connectionsInDb.data && connectionsInDb.data.length > 0) {
+          let totalAccountsSaved = 0;
+          
+          for (const dbConnection of connectionsInDb.data) {
+            const connectionAccounts = accounts.filter((account: any) => 
+              account.brokerage_authorization === dbConnection.snaptrade_connection_id
+            );
+  
+            if (connectionAccounts.length > 0) {
+              console.log(`💾 processNewConnection: 💰 Saving ${connectionAccounts.length} accounts...`);
+              
+              try {
+                const transformedAccounts = connectionAccounts.map((account: any) => ({
+                  id: account.id,
+                  name: account.name,
+                  number: account.number,
+                  institution_name: account.institution_name,
+                  brokerage_authorization: account.brokerage_authorization,
+                  balance: account.balance,
+                  meta: account.meta,
+                  sync_status: account.sync_status,
+                  created_date: account.created_date,
+                  status: account.status,
+                  type: account.meta?.type || account.raw_type,
+                  raw_data: account
+                }));
+  
+                const saveAccountsResponse = await fetch('/api/snaptrade/save-accounts', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    connectionId: dbConnection.id,
+                    accounts: transformedAccounts
+                  })
+                });
+  
+                if (saveAccountsResponse.ok) {
+                  const result = await saveAccountsResponse.json();
+                  console.log(`💾 processNewConnection: ✅ Accounts saved for connection ${dbConnection.id}`);
+                  totalAccountsSaved += connectionAccounts.length;
+                } else {
+                  const errorText = await saveAccountsResponse.text();
+                  console.error(`💾 processNewConnection: ❌ Failed to save accounts for connection ${dbConnection.id}`);
+                  console.error('💾 processNewConnection: Save accounts error:', errorText);
+                }
+              } catch (error) {
+                console.error('💾 processNewConnection: ❌ Exception saving accounts:', error);
+              }
+            }
+          }
+  
+          console.log('💾 processNewConnection: Account storage summary:', {
+            totalAccounts: accounts.length,
+            accountsSaved: totalAccountsSaved
+          });
+        }
+      }
+  
+      // Step 4: Refresh the UI
+      console.log('💾 processNewConnection: 🔄 Refreshing UI...');
+      await fetchBrokerageConnections(profile.id);
+      console.log('💾 processNewConnection: ✅ UI refresh completed');
+      
+      alert('Brokerage account connected and synced successfully!');
+  
+    } catch (error) {
+      console.error('💾 processNewConnection: ❌ Critical error:', error);
+      alert('Connection successful, but there was an issue saving the data. Please refresh the page.');
+    }
+  
+    console.log('💾 processNewConnection: ==========================================');
+  };
+  
 
   const handleRefreshConnection = async (connectionId: string) => {
     console.log('🔄 Refreshing connection (regular API):', connectionId)
@@ -950,6 +1306,7 @@ const showXPGainNotification = (xpGained: number, description: string) => {
                 onConnect={handleConnectBrokerage}
                 onRefresh={handleRefreshConnection}
                 onDisconnect={handleDisconnectBrokerage}
+                loading={loading}
               />
             )}
 
