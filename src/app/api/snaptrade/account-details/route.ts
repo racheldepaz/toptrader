@@ -1,13 +1,24 @@
-// src/app/api/snaptrade/account-details/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { Snaptrade } from 'snaptrade-typescript-sdk';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 
 // Initialize SnapTrade client
 const snaptrade = new Snaptrade({
   clientId: process.env.SNAPTRADE_CLIENT_ID!,
   consumerKey: process.env.SNAPTRADE_CONSUMER_KEY!,
 });
+
+// Use service role client for database operations (bypasses RLS issues)
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,8 +50,8 @@ export async function POST(request: NextRequest) {
         
         console.log('Storing account details in database...');
         
-        // Store the account details
-        const { data: storeResult, error: storeError } = await supabase
+        // Store the account details using service role
+        const { data: storeResult, error: storeError } = await supabaseAdmin
           .rpc('store_snaptrade_account', {
             p_snaptrade_user_id: userId,
             p_connection_id: connectionId,
@@ -54,8 +65,8 @@ export async function POST(request: NextRequest) {
           console.log('✅ Account details stored successfully:', storeResult);
         }
 
-        // Also update the connection's last sync time
-        const { error: syncError } = await supabase
+        // Also update the connection's last sync time using service role
+        const { error: syncError } = await supabaseAdmin
           .from('snaptrade_connections')
           .update({ 
             last_sync_at: new Date().toISOString(),
@@ -84,7 +95,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// New GET endpoint to fetch stored account details from database
+// Updated GET endpoint using service role to bypass RLS
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -99,8 +110,8 @@ export async function GET(request: NextRequest) {
 
     console.log('Fetching stored account details for user:', topTraderUserId);
 
-    // Get account details from database
-    const { data: accounts, error } = await supabase
+    // Get account details from database using service role (bypasses RLS)
+    const { data: accounts, error } = await supabaseAdmin
       .rpc('get_user_account_details', { p_user_id: topTraderUserId });
 
     if (error) {
@@ -111,10 +122,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const totalBalance = accounts?.reduce((sum: number, acc: any) => 
+      sum + parseFloat(acc.balance_amount.toString()), 0) || 0;
+
+    console.log('✅ Successfully fetched account details:', {
+      accountsFound: accounts?.length || 0,
+      totalBalance
+    });
+
     return NextResponse.json({
       accounts: accounts || [],
       totalAccounts: accounts?.length || 0,
-      totalBalance: accounts?.reduce((sum: number, acc: any) => sum + parseFloat(acc.balance_amount.toString()), 0) || 0
+      totalBalance
     });
 
   } catch (error) {
